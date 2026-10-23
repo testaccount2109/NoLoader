@@ -18,6 +18,8 @@ jobs:
       contents: write
     env:
       NOLOADER_RELEASE_SIGNING_PRIVATE_KEY_PEM: ${{ secrets.NOLOADER_RELEASE_SIGNING_PRIVATE_KEY_PEM }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,7 +53,7 @@ jobs:
         shell: pwsh
         run: yarn licenses generate-disclaimer | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'THIRD-PARTY-LICENSES.txt') -Encoding utf8NoBOM
       - name: Build prepared NoLoader launcher
-        run: yarn tauri build --no-bundle
+        run: yarn tauri build
       - name: Package prepared launcher and required notices
         id: archive
         shell: pwsh
@@ -99,6 +101,41 @@ jobs:
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archivePath -CompressionLevel Optimal -Force
           "archive_name=$archiveName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
           "archive_path=$archivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+      - name: Package signed Tauri updater and manifest
+        id: updater
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.release.outputs.version }}'
+          $tauriConfig = Get-Content (Join-Path $env:GITHUB_WORKSPACE 'src-tauri\tauri.conf.json') -Raw | ConvertFrom-Json
+          $nsisDirectory = Join-Path $env:GITHUB_WORKSPACE 'src-tauri\target\release\bundle\nsis'
+          $setup = Get-ChildItem -LiteralPath $nsisDirectory -Filter '*-setup.exe' -File | Select-Object -First 1
+          if ($null -eq $setup) { throw 'The signed NSIS updater artifact was not built.' }
+          $signaturePath = "$($setup.FullName).sig"
+          if (!(Test-Path -LiteralPath $signaturePath -PathType Leaf)) { throw 'The Tauri updater signature is missing.' }
+
+          $assetName = "NoLoader-Updater-Windows-x64-$version.exe"
+          $assetPath = Join-Path $env:RUNNER_TEMP $assetName
+          $assetSignaturePath = "$assetPath.sig"
+          $manifestPath = Join-Path $env:RUNNER_TEMP 'latest.json'
+          Copy-Item -LiteralPath $setup.FullName -Destination $assetPath
+          Copy-Item -LiteralPath $signaturePath -Destination $assetSignaturePath
+
+          $manifest = [ordered]@{
+            version = $tauriConfig.version
+            notes = "NoLoader Launcher $version. Signed update from $env:GITHUB_REPOSITORY."
+            pub_date = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            platforms = [ordered]@{
+              'windows-x86_64' = [ordered]@{
+                signature = (Get-Content -LiteralPath $signaturePath -Raw).Trim()
+                url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME/$assetName"
+              }
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
+          "asset_path=$assetPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+          "signature_path=$assetSignaturePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+          "manifest_path=$manifestPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
       - name: Sign release catalog
         shell: pwsh
         env:
@@ -134,6 +171,9 @@ jobs:
             ${{ steps.archive.outputs.archive_path }}
             ${{ runner.temp }}/NoLoader-Setup-Windows-x64.exe
             ${{ runner.temp }}/NoLoader-Catalog.json
+            ${{ steps.updater.outputs.asset_path }}
+            ${{ steps.updater.outputs.signature_path }}
+            ${{ steps.updater.outputs.manifest_path }}
       - name: Publish the current signed catalog to the stable raw URL
         shell: pwsh
         run: |

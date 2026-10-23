@@ -130,7 +130,7 @@ export function GeneralTab() {
         <SettingRow
           label={t("settings.auto_updates")}
           description={t("settings.auto_updates.tooltip")}
-          searchKeywords={kw("settings.auto_updates", "update", "updates", "aktualisierung")}
+          searchKeywords={kw("settings.auto_updates", "update", "updates", "noloader", "github")}
           disabled={saving}
         >
           <ToggleSwitch
@@ -178,19 +178,6 @@ export function GeneralTab() {
           <ToggleSwitch
             checked={tempConfig?.enable_discord_presence || false}
             onChange={(checked) => tempConfig && setTempConfig({ ...tempConfig, enable_discord_presence: checked })}
-            disabled={saving}
-            size="md"
-          />
-        </SettingRow>
-        <SettingRow
-          label={t("settings.beta_updates")}
-          description={t("settings.beta_updates.tooltip")}
-          searchKeywords={kw("settings.beta_updates", "beta", "update", "channel", "kanal")}
-          disabled={saving}
-        >
-          <ToggleSwitch
-            checked={tempConfig?.check_beta_channel || false}
-            onChange={(checked) => tempConfig && setTempConfig({ ...tempConfig, check_beta_channel: checked })}
             disabled={saving}
             size="md"
           />

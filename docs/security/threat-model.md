@@ -29,4 +29,4 @@ An installed extension may be malicious or malformed. It can choose its manifest
 
 ## Out of scope
 
-The current implementation does not provide signed extension packages, a remote extension registry, hard resource quotas, native extensions, backend extensions, or access to Minecraft process memory. It does not verify the publisher identity of a mod. The Windows installer verifies signed launcher releases, but the repository has no published catalog or prepared artifact. No external security audit has been performed.
+The current implementation does not provide signed extension packages, a remote extension registry, hard resource quotas, native extensions, backend extensions, or access to Minecraft process memory. It does not verify the publisher identity of a mod. The Windows installer verifies the signed release catalog and archive hash, and the launcher updater verifies signed Windows update artifacts. Both update feeds point to the NoLoader fork. No external security audit has been performed.

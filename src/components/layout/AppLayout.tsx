@@ -37,18 +37,13 @@ import { useFriendsStore } from "../../store/friends-store";
 import { useClipsStore } from "../../store/clips-store";
 import { closeClipEditorThen } from "../../services/clip-service";
 import { useChatStore } from "../../store/chat-store";
-import { checkUpdateAvailable, downloadAndInstallUpdate } from "../../services/nrc-service";
-import type { UpdateInfo } from "../../types/updater";
 import { ProfileWizardV2Modal } from "../modals/ProfileWizardV2Modal";
 import { ProfileSettingsModal } from "../modals/ProfileSettingsModal";
 import { SettingsModal } from "../modals/SettingsModal";
 import { ProfileDuplicateModal } from "../modals/ProfileDuplicateModal";
 import { exit, relaunch } from '@tauri-apps/plugin-process';
-import { Tooltip } from "../ui/Tooltip";
 import { HeaderInfoCarousel } from "../header/HeaderInfoCarousel";
-import { toast } from 'react-hot-toast';
 import { useTranslation } from "react-i18next";
-import { parseErrorMessage } from "../../utils/error-utils";
 
 const appConfig = {
   version: "v0.5.22",
@@ -428,29 +423,6 @@ function HeaderBar({ minimizeRef, maximizeRef, closeRef }: HeaderBarProps) {
   const { t } = useTranslation();
   const accentColor = useThemeStore((state) => state.accentColor);
   const [appVersion, setAppVersion] = useState<string | null>(null);
-  const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo | null>(null);
-  const [isUpdating, setIsUpdating] = useState(false);
-
-  const handleUpdateClick = async () => {
-    if (isUpdating) return; // Prevent multiple simultaneous downloads
-
-    setIsUpdating(true);
-    try {
-      await toast.promise(
-        downloadAndInstallUpdate(),
-        {
-          loading: t('header.update.downloading'),
-          success: t('header.update.success'),
-          error: (err) => t('header.update.failed', { error: parseErrorMessage(err) }),
-        }
-      );
-    } catch (error) {
-      console.error("Failed to download and install update:", error);
-      // Toast error is already handled by the promise toast
-    } finally {
-      setIsUpdating(false);
-    }
-  };
 
   // Calculate complementary/update highlight color based on current accent
   const getUpdateHighlightColor = () => {
@@ -492,31 +464,7 @@ function HeaderBar({ minimizeRef, maximizeRef, closeRef }: HeaderBarProps) {
       }
     };
 
-  const checkForUpdates = async () => {
-    try {
-      const updateInfo = await checkUpdateAvailable();
-      if (updateInfo) {
-        console.log("Update available:", updateInfo);
-        setAvailableUpdate(updateInfo);
-      }
-    } catch (error) {
-      console.error("Failed to check for updates:", error);
-      // Don't show error to user, just silently fail
-    }
-  };
-
     fetchVersion();
-    checkForUpdates();
-
-    // Check for updates every 4 hours (4 * 60 * 60 * 1000 = 14,400,000 ms)
-    const updateCheckInterval = setInterval(() => {
-      console.log("Performing scheduled update check...");
-      checkForUpdates();
-    }, 4 * 60 * 60 * 1000);
-
-    return () => {
-      clearInterval(updateCheckInterval);
-    };
   }, []);
 
   return (
@@ -542,22 +490,6 @@ function HeaderBar({ minimizeRef, maximizeRef, closeRef }: HeaderBarProps) {
             >
               NoRiskClient
             </h1>
-            {availableUpdate && (
-              <Tooltip content={isUpdating ? t('header.update.tooltip_updating') : t('header.update.tooltip_available', { version: availableUpdate.version })}>
-                <div
-                  className={isUpdating ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}
-                  onClick={handleUpdateClick}
-                >
-                  <Icon
-                    icon={isUpdating ? "solar:download-minimalistic-bold" : "solar:download-minimalistic-bold"}
-                    className={`w-6 h-6 transition-colors ${isUpdating ? 'animate-pulse' : ''}`}
-                    style={{
-                      color: accentColor.value,
-                    }}
-                  />
-                </div>
-              </Tooltip>
-            )}
           </div>
           <HeaderInfoCarousel version={appVersion} />
         </div>

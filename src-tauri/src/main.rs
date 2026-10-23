@@ -466,7 +466,6 @@ async fn main() {
                 match state::state_manager::State::get().await {
                     Ok(state_manager_instance) => {
                         let config = state_manager_instance.config_manager.get_config().await;
-                        let check_beta_channel = config.check_beta_channel;
                         let mut auto_check_updates_enabled = config.auto_check_updates;
 
                         // Disable auto-updates when running in Flatpak
@@ -476,8 +475,8 @@ async fn main() {
                         }
 
                         if auto_check_updates_enabled {
-                            trace!("Initiating application update check (Channel determined by config: Beta={})...", check_beta_channel);
-                            updater_utils::check_for_updates(state_init_app_handle.clone(), check_beta_channel, updater_window.clone()).await;
+                            trace!("Initiating signed NoLoader release check...");
+                            updater_utils::check_for_updates(state_init_app_handle.clone(), false, updater_window.clone()).await;
                             trace!("Update check process has finished.");
                         } else {
                             info!("Auto-check for updates is disabled in settings. Skipping update check.");

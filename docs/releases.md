@@ -1,6 +1,6 @@
 # Release process status
 
-The public source fork includes the NoLoader core, a plain Windows installer, and a locally built prepared launcher ZIP. No prepared artifact or signed release catalog has been published. The upstream Tauri updater has no configured endpoint. The P-256 catalog key is pinned in the source and its private half is stored as an Actions secret. The installer must not guess a URL or fall back to an unmodified launcher.
+The public source fork publishes a prepared Windows launcher archive, a self-contained installer, and a signed Tauri updater artifact for tagged `noloader-v*` releases. The installer reads the signed catalog from this fork's `noloader-catalog` branch and installs only artifacts whose catalog signature, size, and SHA-256 verify. The launcher checks the static `latest.json` manifest attached to the latest release and verifies the updater artifact with this fork's Tauri key. The upstream NoRisk updater API is not queried. Existing installations must first be migrated once with NoLoader Setup because they still contain the old updater endpoint and key.
 
 Before publishing a prepared launcher, a release must identify:
 
@@ -12,4 +12,4 @@ Before publishing a prepared launcher, a release must identify:
 - source changes and GPL-3.0 notices;
 - third-party runtime/native dependency licenses.
 
-The installer verifies signed catalog metadata and the artifact size and SHA-256 before writing files. It requires explicit confirmation before replacing the selected launcher folder, retains complete backups, and can restore the recorded original NoRisk folder after later updates. The release workflow publishes the prepared Windows build and installer and refreshes the signed raw catalog weekly. The first tagged release still needs to complete before there is a public installable binary.
+The installer verifies signed catalog metadata and the artifact size and SHA-256 before writing files. It requires explicit confirmation before replacing the selected launcher folder, retains complete backups, and can restore the recorded original NoRisk folder after later updates. The release workflow publishes the prepared Windows build, signed updater artifact and manifest, and installer, then refreshes the signed raw catalog weekly. The Tauri signing key and catalog signing key are separate GitHub Actions secrets; neither private key belongs in the repository.

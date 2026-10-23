@@ -10,6 +10,8 @@ use tokio::time::{sleep, Duration};
 
 const UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(20);
 const UPDATE_CHECK_CACHE_TTL: Duration = Duration::from_secs(60);
+const NOLOADER_UPDATE_ENDPOINT: &str =
+    "https://github.com/testaccount2109/noriskclient-launcher/releases/latest/download/latest.json";
 
 struct CachedUpdateCheck {
     checked_at: Instant,
@@ -74,50 +76,34 @@ pub async fn check_update_available_detailed(
     app_handle: &AppHandle,
     is_beta_channel: bool,
 ) -> AppResult<Option<UpdateCheckResult>> {
+    if !cfg!(target_os = "windows") {
+        return Ok(None);
+    }
+
     let current_version = app_handle.package_info().version.to_string();
     let channel = if is_beta_channel { "Beta" } else { "Stable" };
 
     trace!(
         "Checking for available updates (detailed) (Current: {}). Channel: {}",
-        current_version, channel
+        current_version,
+        channel
     );
 
-    // Determine the base part of the URL and the platform-specific segment template
-    let base_repo_url = if is_beta_channel {
-        "https://api-staging.norisk.gg/api/v1/launcher/releases-v2"
-    } else {
-        "https://api.norisk.gg/api/v1/launcher/releases-v2"
-    };
-
-    let mut platform_specific_target = "{{target}}".to_string(); // Default: Tauri replaces {{target}}
-
-    if cfg!(target_os = "linux") {
-        if std::env::var("APPIMAGE").is_ok() {
-            info!("Linux AppImage detected. Updater will use default target for manifest URL.");
-            // platform_specific_target remains "{{target}}" for AppImage
-        } else {
-            // Not an AppImage, assume .deb or similar package manager context.
-            let deb_target_identifier = "debian";
-            info!(
-                "Linux non-AppImage (e.g., .deb) detected. Modifying manifest URL to use target: {}",
-                deb_target_identifier
-            );
-            platform_specific_target = deb_target_identifier.to_string();
-        }
-    }
-
-    // Construct the final update URL string
-    let update_url_str = format!(
-        "{}/{}/{{{{arch}}}}/{{{{current_version}}}}",
-        base_repo_url, platform_specific_target
+    let update_url_str = NOLOADER_UPDATE_ENDPOINT;
+    trace!(
+        "Checking the signed NoLoader release feed: {}",
+        update_url_str
     );
 
-    trace!("Using update endpoint template: {}", update_url_str);
+    let update_url = update_url_str.parse().map_err(|e| {
+        AppError::Other(format!(
+            "Failed to parse update URL '{}': {}",
+            update_url_str, e
+        ))
+    })?;
 
-    let update_url = update_url_str.parse()
-        .map_err(|e| AppError::Other(format!("Failed to parse update URL '{}': {}", update_url_str, e)))?;
-
-    let updater_builder = app_handle.updater_builder()
+    let updater_builder = app_handle
+        .updater_builder()
         .configure_client(|c| c.connect_timeout(HTTP_CONNECT_TIMEOUT))
         .endpoints(vec![update_url])
         .map_err(|e| AppError::Other(format!("Failed to set updater endpoints: {}", e)))?;
@@ -148,10 +134,7 @@ pub async fn check_update_available_detailed(
 
             info!(
                 "Update check: {} available (current {}, {} channel, released {:?})",
-                update.version,
-                current_version,
-                channel,
-                update.date
+                update.version, current_version, channel, update.date
             );
             remember_update_check(is_beta_channel, Some(update_info.clone()));
 
@@ -302,7 +285,10 @@ pub async fn download_and_install_update(
     // Check for available updates with detailed information
     match check_update_available_detailed(app_handle, is_beta_channel).await? {
         Some(update_check_result) => {
-            info!("Update available: {}. Proceeding with download...", update_check_result.update_info.version);
+            info!(
+                "Update available: {}. Proceeding with download...",
+                update_check_result.update_info.version
+            );
 
             // Use the update object directly from the check result
             handle_update(update_check_result.update, app_handle.clone()).await
@@ -402,9 +388,7 @@ async fn handle_update(
     }
     // --- End Debug Delay ---
 
-    // --- Step 2: Install the update ---
-    // This block can be commented out for testing to prevent actual installation
-    /* START INSTALL BLOCK */
+    // --- Step 2: Install the signed NoLoader update ---
     info!("Starting update installation...");
     update
         .install(bytes) // Use the install method with the downloaded bytes
@@ -413,21 +397,7 @@ async fn handle_update(
             // Convert updater::Error to AppError::Other for install step
             AppError::Other(format!("Updater install error: {}", e))
         })?;
-    // Simulate install time if commented out
-    #[cfg(debug_assertions)]
-    if true {
-        // Change to check if install block IS commented out if needed
-        info!("DEBUG: Simulating installation time...");
-        sleep(Duration::from_secs(2)).await;
-        info!("DEBUG: Simulated installation finished.");
-    } else {
-        info!("DEBUG: Installation block active (no extra delay added here).");
-    }
-    // Remove the line below if install block is active
-    info!("Skipping actual installation (commented out).");
-    /* END INSTALL BLOCK */
-
-    // Emit final statuses after successful install (or after download if install is commented out)
+    // Emit final statuses after successful install.
     emit_status(
         &app_handle,
         "installing",
@@ -462,6 +432,17 @@ pub async fn check_for_updates(
     is_beta_channel: bool,
     updater_window: Option<WebviewWindow>,
 ) {
+    if !cfg!(target_os = "windows") {
+        let notice = "Automatic NoLoader updates are currently available on Windows only.";
+        emit_status(&app_handle, "close", notice.to_string(), None);
+        if let Some(window) = updater_window {
+            if let Err(error) = window.close() {
+                warn!("Could not close the updater window: {error}");
+            }
+        }
+        return;
+    }
+
     let current_version = app_handle.package_info().version.to_string();
     let channel = if is_beta_channel { "Beta" } else { "Stable" };
     let final_status: String;
@@ -478,43 +459,8 @@ pub async fn check_for_updates(
         None,
     );
 
-    // Determine the base part of the URL and the platform-specific segment template
-    let base_repo_url = if is_beta_channel {
-        "https://api-staging.norisk.gg/api/v1/launcher/releases-v2"
-    } else {
-        "https://api.norisk.gg/api/v1/launcher/releases-v2"
-    };
-
-    let mut platform_specific_target = "{{target}}".to_string(); // Default: Tauri replaces {{target}}
-
-    if cfg!(target_os = "linux") {
-        if std::env::var("APPIMAGE").is_ok() {
-            info!("Linux AppImage detected. Updater will use default target for manifest URL.");
-            // platform_specific_target remains "{{target}}" for AppImage
-        } else {
-            // Not an AppImage, assume .deb or similar package manager context.
-            // The server must be configured to serve a .deb manifest for this specific target string.
-            // IMPORTANT: "debian" is a placeholder. Confirm with your backend/server team
-            // what target string they expect for .deb packages (e.g., "debian", "linux-deb").
-            let deb_target_identifier = "debian";
-            info!(
-                "Linux non-AppImage (e.g., .deb) detected. Modifying manifest URL to use target: {}",
-                deb_target_identifier
-            );
-            platform_specific_target = deb_target_identifier.to_string();
-        }
-    }
-
-    // Construct the final update URL string
-    // Tauri will replace {{arch}} and {{current_version}}.
-    // {{target}} will also be replaced by Tauri *if* platform_specific_target is "{{target}}".
-    // Otherwise, our specific target (e.g., "debian") is used directly.
-    let update_url_str = format!(
-        "{}/{}/{{{{arch}}}}/{{{{current_version}}}}",
-        base_repo_url, platform_specific_target
-    );
-
-    info!("Using update endpoint template: {}", update_url_str);
+    let update_url_str = NOLOADER_UPDATE_ENDPOINT;
+    info!("Using signed NoLoader release feed: {}", update_url_str);
 
     let update_url = match update_url_str.parse() {
         Ok(url) => url,
@@ -630,6 +576,7 @@ pub async fn check_for_updates(
     emit_status(&app_handle, "close", final_message.clone(), None);
     trace!(
         "Update check process fully completed (Status: {}). Final Message: {}",
-        final_status, final_message
+        final_status,
+        final_message
     );
 }

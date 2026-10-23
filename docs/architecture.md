@@ -53,7 +53,7 @@ The frontend integration lives in `src/lib/router.tsx`, `src/components/layout/A
 - The `noriskclient-backend` gitlink has no mapping or checked-out source in this commit. Confirm its intended source before any build or behavior that depends on it.
 - Workers prevent direct access to the launcher DOM and Tauri bridge, but they do not provide hard resource quotas. Platform behavior and CSP enforcement need native runtime verification.
 - No upstream frontend test framework was configured. The NoLoader core uses Node's built-in `node:test` API through a dev-only TypeScript runner; no test framework or runtime dependency was added.
-- The public source fork and catalog signing key are configured, but no public signed catalog or prepared launcher is published. A local Windows launcher archive exists; the installer correctly disables distribution installs until the first trusted release is published.
+- The public source fork has published signed Windows launcher releases. The installer checks the signed catalog, while the launcher uses a separate Tauri update key and the fork's `latest.json` release manifest.
 - The brief names a Windows `Noloader.exe` installer, while upstream packaging targets Windows, macOS, and Linux. Treat Windows as the initial installer target unless later requirements establish otherwise.
 - License compatibility of every shipped dependency and native binary must be checked before redistributing a prepared build.
 
@@ -61,4 +61,4 @@ The frontend integration lives in `src/lib/router.tsx`, `src/components/layout/A
 
 The repository's prior verification results are recorded above. This API 2 extension update has been typechecked and its three SDK example bundles built. The native launcher has not yet been rebuilt with these changes in this turn.
 
-The source branch is public at `https://github.com/testaccount2109/noriskclient-launcher`. No binary release or signed catalog is published yet, and the installer remains disabled for distribution until a release workflow publishes them. A successful local build does not complete a legal review of every bundled dependency; retain the packaged license notices and verify upstream component source availability before announcing the binary release.
+The source branch is public at `https://github.com/testaccount2109/noriskclient-launcher`. The release workflow builds the Windows launcher archive, signed Tauri update, installer, and signed catalog. A successful build does not complete a legal review of every bundled dependency; retain the packaged license notices and verify upstream component source availability before announcing binary releases.
