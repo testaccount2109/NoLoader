@@ -78,9 +78,20 @@ jobs:
             'graphics-hook-GPL-2.0.txt'
           )
           foreach ($name in $requiredFiles) {
-            $source = Join-Path $releaseDirectory $name
+            $sourceDirectory = if ($name -eq 'noriskclient-launcher-v3.exe') {
+              $releaseDirectory
+            } else {
+              Join-Path $env:GITHUB_WORKSPACE 'src-tauri\binaries'
+            }
+            $source = Join-Path $sourceDirectory $name
             if (!(Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required launcher file is missing: $name" }
-            Copy-Item -LiteralPath $source -Destination (Join-Path $stage $name)
+            $destinationDirectory = if ($name -in @('ffmpeg-LICENSE.txt', 'ffmpeg-NOTICE.txt', 'graphics-hook-NOTICE.txt', 'graphics-hook-GPL-2.0.txt')) {
+              Join-Path $stage 'licenses'
+            } else {
+              $stage
+            }
+            New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+            Copy-Item -LiteralPath $source -Destination (Join-Path $destinationDirectory $name)
           }
           Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'LICENSE') -Destination (Join-Path $stage 'LICENSE')
           Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'NOLOADER-BUILD-NOTICE.txt') -Destination (Join-Path $stage 'NOLOADER-BUILD-NOTICE.txt')
