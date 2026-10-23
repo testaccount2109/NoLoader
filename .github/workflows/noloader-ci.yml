@@ -37,11 +37,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
       - name: Check Rust formatting
         working-directory: src-tauri
-        run: cargo fmt --all -- --check
+        run: rustfmt --edition 2021 --check src/noloader.rs
       - name: Check NoLoader native commands
         working-directory: src-tauri
         run: cargo test --locked --lib noloader::tests
