@@ -174,23 +174,27 @@ jobs:
             ${{ steps.updater.outputs.asset_path }}
             ${{ steps.updater.outputs.signature_path }}
             ${{ steps.updater.outputs.manifest_path }}
+      - uses: actions/checkout@v4
+        with:
+          ref: noloader-catalog
+          path: catalog
       - name: Publish the current signed catalog to the stable raw URL
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $catalogPath = Join-Path $env:RUNNER_TEMP 'NoLoader-Catalog.json'
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git fetch origin refs/heads/noloader-catalog:refs/remotes/origin/noloader-catalog 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            git checkout -B noloader-catalog origin/noloader-catalog
-          } else {
-            git checkout --orphan noloader-catalog
-            git rm -r --cached --ignore-unmatch .
-          }
-          Copy-Item -LiteralPath $catalogPath -Destination (Join-Path $env:GITHUB_WORKSPACE 'catalog.json') -Force
-          git add -- catalog.json
-          git commit -m "Publish signed NoLoader catalog for ${{ steps.release.outputs.version }}"
-          git push origin noloader-catalog
+          $catalogDirectory = Join-Path $env:GITHUB_WORKSPACE 'catalog'
+          Copy-Item -LiteralPath $catalogPath -Destination (Join-Path $catalogDirectory 'catalog.json') -Force
+          git -C $catalogDirectory config user.name 'github-actions[bot]'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not set the catalog commit author.' }
+          git -C $catalogDirectory config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not set the catalog commit email.' }
+          git -C $catalogDirectory add -- catalog.json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not stage the signed catalog.' }
+          git -C $catalogDirectory commit -m "Publish signed NoLoader catalog for ${{ steps.release.outputs.version }}"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not commit the signed catalog.' }
+          git -C $catalogDirectory push origin HEAD:refs/heads/noloader-catalog
+          if ($LASTEXITCODE -ne 0) { throw 'Could not push the signed catalog branch.' }
 
   renew-catalog:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
