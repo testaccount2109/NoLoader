@@ -49,7 +49,7 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Collect frontend dependency notices
         shell: pwsh
-        run: yarn licenses generate-disclaimer --output (Join-Path $env:RUNNER_TEMP 'THIRD-PARTY-LICENSES.txt')
+        run: yarn licenses generate-disclaimer | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'THIRD-PARTY-LICENSES.txt') -Encoding utf8NoBOM
       - name: Build prepared NoLoader launcher
         run: yarn tauri build --no-bundle
       - name: Package prepared launcher and required notices
