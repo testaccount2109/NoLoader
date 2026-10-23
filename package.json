@@ -2,7 +2,10 @@
   "name": "noriskclient-launcher-v3",
   "private": true,
   "workspaces": [
-    "sdk/hello-mod"
+    "sdk/hello-mod",
+    "sdk/quick-join-mod",
+    "sdk/game-mod-import",
+    "sdk/performance-mod"
   ],
   "version": "0.1.0",
   "type": "module",
@@ -11,8 +14,11 @@
     "predev": "yarn icons && yarn native-deps",
     "build": "tsc && vite build",
     "prebuild": "yarn icons && yarn native-deps",
-    "test:noloader": "yarn sdk:hello-mod:build && tsx src/noloader/core.test.ts",
+    "test:noloader": "yarn sdk:hello-mod:build && yarn sdk:quick-join-mod:build && tsx src/noloader/core.test.ts",
     "sdk:hello-mod:build": "yarn workspace @noloader/hello-mod build",
+    "sdk:quick-join-mod:build": "yarn workspace @noloader/quick-join-mod build",
+    "sdk:game-mod-import:build": "yarn workspace @noloader/game-mod-import build",
+    "sdk:performance-mod:build": "yarn workspace @noloader/performance-mod build",
     "preview": "vite preview",
     "tauri": "tauri",
     "icons": "node scripts/generate-icon-bundle.mjs",

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "org.noloader.game-mod-import",
+  "name": "Game Mod Import",
+  "version": "1.0.0",
+  "description": "Imports local Java game mods into an existing loader profile.",
+  "authors": ["NoLoader SDK"],
+  "apiVersion": 2,
+  "launcherVersions": ["0.6.29"],
+  "entrypoints": {
+    "frontend": "dist/index.js"
+  },
+  "dependencies": [],
+  "optionalDependencies": [],
+  "conflicts": [],
+  "permissions": ["ui.pages", "ui.navigation", "launcher.profiles.read", "game.mods.install"]
+}

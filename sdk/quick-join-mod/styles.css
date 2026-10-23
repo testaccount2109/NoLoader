@@ -1,0 +1,8 @@
+.noloader-card {
+  border-color: rgba(117, 174, 255, 0.24);
+  background: linear-gradient(120deg, rgba(20, 38, 62, 0.82), rgba(10, 14, 21, 0.74));
+}
+
+.noloader-action {
+  border-color: rgba(117, 174, 255, 0.7);
+}

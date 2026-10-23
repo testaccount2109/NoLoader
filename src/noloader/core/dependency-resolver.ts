@@ -27,6 +27,7 @@ export interface DependencyResolution {
 
 export interface RuntimeCompatibility {
   apiVersion: number;
+  apiVersions?: readonly number[];
   launcherVersion: string;
 }
 
@@ -64,11 +65,11 @@ export function resolveDependencies(
 
   for (const manifest of [...manifestsById.values()].sort(byId)) {
     if (statusById.has(manifest.id)) continue;
-    if (manifest.apiVersion !== runtime.apiVersion) {
+    if (!(runtime.apiVersions ?? [runtime.apiVersion]).includes(manifest.apiVersion)) {
       setIssue(
         manifest.id,
         "incompatible",
-        `Requires NoLoader API ${manifest.apiVersion}; this launcher supports ${runtime.apiVersion}.`,
+        `Requires NoLoader API ${manifest.apiVersion}; this launcher supports ${(runtime.apiVersions ?? [runtime.apiVersion]).join(", ")}.`,
       );
       continue;
     }

@@ -413,7 +413,7 @@ export function NoLoaderExtensionPage() {
     (entry) => entry.modId === modId && entry.item.pageId === pageId,
   )?.item.label;
   const handleAction = useMemo(
-    () => (action: string) => sendAction(modId, action),
+    () => (action: string, value?: string | number | boolean) => sendAction(modId, action, value),
     [modId, sendAction],
   );
 

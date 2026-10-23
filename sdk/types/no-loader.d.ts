@@ -1,9 +1,28 @@
 export type ModId = string;
 
+export type ModFeatureId =
+  | "curseforge.integration"
+  | "launcher.news"
+  | "launcher.effects"
+  | "launcher.ads";
+
+export interface LauncherPerformanceSnapshot {
+  activeMods: number;
+  apiCallsLastMinute: number;
+  averageApiLatencyMs: number;
+  maxApiLatencyMs: number;
+}
+
+export type ModActionValue = string | number | boolean;
+
 export type ModUiNode =
   | { type: "text"; text: string }
   | { type: "heading"; level: 1 | 2 | 3; text: string }
   | { type: "button"; id: string; label: string; action: string }
+  | { type: "toggle"; id: string; label: string; checked: boolean; action: string; disabled?: boolean }
+  | { type: "input"; id: string; label: string; value: string; action: string; placeholder?: string; maxLength?: number; disabled?: boolean }
+  | { type: "select"; id: string; label: string; value: string; options: Array<{ label: string; value: string }>; action: string; disabled?: boolean }
+  | { type: "progress"; value: number; label?: string }
   | { type: "stack"; direction: "row" | "column"; children: ModUiNode[] }
   | { type: "card"; title?: string; children: ModUiNode[] };
 
@@ -17,6 +36,7 @@ export interface ModHomeWidget {
   id: string;
   title: string;
   content: ModUiNode[];
+  position?: "before-play" | "after-play";
 }
 
 export interface ModNavigationItem {
@@ -65,7 +85,9 @@ export interface NoLoaderApi {
   registerHomeWidget(widget: ModHomeWidget): () => void;
   updateHomeWidget(widgetId: string, widget: ModHomeWidget): void;
   registerNavigationItem(item: ModNavigationItem): () => void;
-  onAction(callback: (action: string) => void | Promise<void>): () => void;
+  registerGlobalStyles(styles: string): () => void;
+  updateGlobalStyles(styles: string): void;
+  onAction(callback: (action: string, value?: ModActionValue) => void | Promise<void>): () => void;
   profiles: {
     list(): Promise<LauncherProfile[]>;
   };
@@ -74,6 +96,16 @@ export interface NoLoaderApi {
   };
   launcher: {
     launchProfile(request: LaunchProfileRequest): Promise<void>;
+  };
+  gameMods: {
+    importFromPicker(profileId: string): Promise<void>;
+  };
+  features: {
+    setEnabled(featureId: ModFeatureId, enabled: boolean): void;
+    getSnapshot(): Promise<Record<ModFeatureId, boolean>>;
+  };
+  performance: {
+    getSnapshot(): Promise<LauncherPerformanceSnapshot>;
   };
   storage: {
     get<T extends ModJsonValue>(key: string): Promise<T | undefined>;

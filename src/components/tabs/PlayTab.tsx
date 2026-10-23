@@ -27,7 +27,7 @@ import { ModUiTree } from "../../noloader/ModUiTree";
 
 export function PlayTab() {
   const { t } = useTranslation();
-  const { homeWidgets, sendAction } = useNoLoader();
+  const { homeWidgets, sendAction, features } = useNoLoader();
   const {
     profiles,
     selectedProfile: storeSelectedProfile,
@@ -67,6 +67,25 @@ export function PlayTab() {
     isCustom: profile.loader !== "vanilla",
     profileId: profile.id,
   }));
+  const homeWidgetsBeforePlay = homeWidgets.filter(
+    ({ widget }) => widget.position !== "after-play",
+  );
+  const homeWidgetsAfterPlay = homeWidgets.filter(
+    ({ widget }) => widget.position === "after-play",
+  );
+  const renderHomeWidgets = (widgets: typeof homeWidgets) =>
+    widgets.length > 0 ? (
+      <section className="w-full max-w-3xl space-y-3">
+        {widgets.map(({ modId, widget, styles }) => (
+          <ModUiTree
+            key={`${modId}:${widget.id}`}
+            page={widget}
+            styles={styles}
+            onAction={(action, value) => sendAction(modId, action, value)}
+          />
+        ))}
+      </section>
+    ) : null;
 
   // promo-outline shader settings for the 3D player preview
   const outline = { strength: 4, thickness: 3, sensitivity: 0.1 };
@@ -75,7 +94,7 @@ export function PlayTab() {
     <div className="flex h-full relative">
       <div className="flex-grow flex flex-col items-center justify-center p-8 relative z-15">
         {/* Only show RetroGrid effect if no theme background is active and effects are not hidden */}
-        {currentEffect === BACKGROUND_EFFECTS.RETRO_GRID && shouldShowEffects && !(isThemeActive && selectedTheme?.backgroundImage) && (
+        {features["launcher.effects"] && currentEffect === BACKGROUND_EFFECTS.RETRO_GRID && shouldShowEffects && !(isThemeActive && selectedTheme?.backgroundImage) && (
           <RetroGridEffect
             renderMode="both"
             isAnimationEnabled={!staticBackground}
@@ -90,13 +109,13 @@ export function PlayTab() {
 
         {/* Watch Ad + 3D Render Toggle - Top Right */}
         <div className="absolute top-6 right-6 z-20 flex flex-col items-end gap-3">
-          <ApplixirAdButton />
+          {features["launcher.ads"] ? <ApplixirAdButton /> : null}
           <div className="flex items-center gap-2">
             <span className="text-sm text-white/70 font-minecraft">{t("settings.background.skin_animation")}</span>
             <ToggleSwitch
-              checked={cosmeticRenderer3d && webglOk}
+              checked={cosmeticRenderer3d && webglOk && features["launcher.effects"]}
               onChange={() => setCosmeticRenderer3d(!cosmeticRenderer3d)}
-              disabled={!webglOk}
+              disabled={!webglOk || !features["launcher.effects"]}
               size="sm"
             />
           </div>
@@ -108,18 +127,7 @@ export function PlayTab() {
         /> */}
 
         <div className="relative z-10 flex w-full flex-col items-center gap-5">
-          {homeWidgets.length > 0 && (
-            <section className="w-full max-w-3xl space-y-3">
-              {homeWidgets.map(({ modId, widget, styles }) => (
-                <ModUiTree
-                  key={`${modId}:${widget.id}`}
-                  page={widget}
-                  styles={styles}
-                  onAction={(action) => sendAction(modId, action)}
-                />
-              ))}
-            </section>
-          )}
+          {renderHomeWidgets(homeWidgetsBeforePlay)}
           {profilesError && !loading && (
             <ErrorMessage
               message={profilesError || "An unknown error occurred"}
@@ -139,10 +147,13 @@ export function PlayTab() {
             className=""
             outline={outline}
           />
+          {renderHomeWidgets(homeWidgetsAfterPlay)}
         </div>
       </div>
 
-      <NewsSection className="w-1/3 border-l-2 border-white/40 bg-black/10 backdrop-blur-lg p-5 overflow-hidden flex flex-col relative z-10" />
+      {features["launcher.news"] ? (
+        <NewsSection className="w-1/3 border-l-2 border-white/40 bg-black/10 backdrop-blur-lg p-5 overflow-hidden flex flex-col relative z-10" />
+      ) : null}
     </div>
   );
 }

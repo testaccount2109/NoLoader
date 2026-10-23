@@ -4,6 +4,13 @@ import type {
 } from "../types/curseforge";
 import type { CacheBehaviour } from "../types/profile";
 import { invoke } from "@tauri-apps/api/core";
+import { getModFeature } from "../noloader/core/feature-policy";
+
+function requireCurseForgeEnabled(): void {
+  if (!getModFeature("curseforge.integration")) {
+    throw new Error("CurseForge has been disabled by an enabled NoLoader mod.");
+  }
+}
 
 export class CurseForgeService {
   /**
@@ -17,6 +24,7 @@ export class CurseForgeService {
     filterPcOnly?: boolean,
     cacheBehaviour?: CacheBehaviour,
   ): Promise<CurseForgeModsResponse> {
+    requireCurseForgeEnabled();
     return invoke<CurseForgeModsResponse>("get_curseforge_mods_by_ids", {
       modIds,
       filterPcOnly,
@@ -45,6 +53,7 @@ export class CurseForgeService {
     fileSize?: number,
     eventId?: string,
   ): Promise<string> {
+    requireCurseForgeEnabled();
     return invoke<string>("download_and_install_curseforge_modpack_command", {
       projectId,
       fileId,
@@ -62,6 +71,7 @@ export class CurseForgeService {
    * @returns Promise with the HTML description string
    */
   static async getModDescription(modId: number): Promise<string> {
+    requireCurseForgeEnabled();
     return invoke<string>("get_curseforge_mod_description_command", {
       modId,
     });

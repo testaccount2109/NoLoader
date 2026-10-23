@@ -1,4 +1,4 @@
-# NoLoader frontend API, version 1
+# NoLoader frontend API, version 2
 
 An entry point exports `activate(api)`. No global launcher object is exposed. API calls use a private `MessagePort`, are validated by the host, and are available only to the extension module in its worker. Direct messages sent through the worker global are ignored.
 
@@ -16,7 +16,7 @@ Requires `ui.navigation`. `item` has `{ id, label, pageId, icon? }`. The page mu
 
 ## `api.registerHomeWidget(widget)` and `api.updateHomeWidget(widgetId, widget)`
 
-Require `ui.home`. Widgets use the same validated `{ id, title, content }` structure as a page and render in the Play screen above the normal launcher controls. A mod may register up to 8 widgets. Updates must keep the registered ID; the returned function removes the widget.
+Require `ui.home`. Widgets use `{ id, title, content, position? }`. `position` may be `before-play` (the default) or `after-play`, which places the widget directly below the Play controls. A mod may register up to 8 widgets. Updates must keep the registered ID; the returned function removes the widget.
 
 ## `api.theme.registerGlobalStyles(styles)` and `api.theme.updateGlobalStyles(styles)`
 
@@ -24,19 +24,23 @@ Require `ui.globalStyles`. This adds a stylesheet to the launcher document, so a
 
 ## `api.onAction(callback)`
 
-Registers the function that receives action IDs from buttons in the mod's pages. It returns a function that removes that handler. A mod with page buttons must register its handler during activation and keep it registered while those buttons are visible. Action IDs use lowercase letters, digits, `_`, or `-`.
+Registers the function that receives action IDs from buttons and controls in the mod's pages. The callback receives `(action, value?)`, where a toggle supplies a boolean and text/select controls supply a string. It returns a function that removes that handler. A mod with interactive controls must register its handler during activation and keep it registered while those controls are visible. Action IDs use lowercase letters, digits, `_`, or `-`.
 
 Button nodes contain `{ type: "button", id, label, action }`. The `id` identifies the UI node; `action` is passed to the callback.
 
 ## Launcher and multiplayer APIs
 
-These calls use the same private request/response channel as the UI API. They are checked against the mod's manifest permissions by the launcher host; extensions cannot call Tauri commands directly. Profile and last-server reads require a direct page-button action, just like a Quick Play launch.
+These calls use the same private request/response channel as the UI API. They are checked against the mod's manifest permissions by the launcher host; extensions cannot call Tauri commands directly. Profile and last-server reads are available after activation to mods whose users approved the corresponding manifest permissions. Quick Play and game-mod installation remain bound to a direct button action.
 
-- `api.profiles.list()` requires `launcher.profiles.read` and returns only profile ID, name, game version, loader, last-played time, and whether the profile is the launcher's last-played profile. Profile paths, settings, and account data are not included. It must be called while handling a NoLoader page button action.
-- `api.servers.getLastPlayed()` requires `launcher.lastServer.read` and returns the most recent multiplayer quick-play target as `{ profileId, address, playedAt }`, or `null` if none has been recorded. It must be called while handling a NoLoader page button action.
-- `api.launcher.launchProfile({ profileId, serverAddress? })` requires `launcher.launch`. The profile must exist in the installed launcher configuration. When `serverAddress` is supplied, NoRisk's existing Quick Play path starts Minecraft and requests a direct multiplayer connection. Successful launcher quick-play requests are recorded for the last-server API.
+- `api.profiles.list()` requires `launcher.profiles.read` and returns only profile ID, name, game version, loader, last-played time, and whether the profile is the launcher's last-played profile. Profile paths, settings, and account data are not included.
+- `api.servers.getLastPlayed()` requires `launcher.lastServer.read` and returns the most recent multiplayer Quick Play target requested through NoRisk as `{ profileId, address, playedAt }`, or `null` if none has been recorded. Manual server joins made inside Minecraft are not tracked yet.
+- `api.launcher.launchProfile({ profileId, serverAddress? })` requires `launcher.launch`. The profile must exist in the installed launcher configuration. When `serverAddress` is supplied, NoRisk's existing Quick Play path starts Minecraft and requests a direct multiplayer connection. Accepted launcher Quick Play requests are recorded for the last-server API.
+- `api.gameMods.importFromPicker(profileId)` requires `game.mods.install`. It opens NoRisk's native JAR picker and imports the chosen game mods into an existing Fabric, Forge, Quilt, or NeoForge profile. It must be called directly from a NoLoader button action. The game's loader runs these JARs inside Minecraft; they can change game behavior and should be treated as trusted code.
+- `api.features.setEnabled(featureId, enabled)` requires `launcher.features.manage`. Supported feature IDs are `curseforge.integration`, `launcher.news`, `launcher.effects` (animated player and background effects), and `launcher.ads`. Changes apply while the mod is enabled and are removed when it stops. When multiple mods set the same feature, a disabled value takes precedence.
+- `api.features.getSnapshot()` requires `launcher.features.manage` and returns the effective values for those four feature IDs.
+- `api.performance.getSnapshot()` requires `launcher.performance.read` and reports active extension count, API requests in the last minute, and sampled average/maximum API latency. It does not report whole-process CPU or memory usage.
 
-An extension must call `launchProfile` while handling a NoLoader page button action. The host uses a short-lived, single-use gesture token, so a mod cannot start Minecraft during activation or later from a timer. Handle a rejected promise, for example when the account is signed out or the profile cannot start. A server address must be a host, optional port, or IPv6 address; it cannot contain whitespace or control characters.
+An extension must call `launchProfile` and `gameMods.importFromPicker` while handling a NoLoader button action. The host uses a short-lived, single-use gesture token, so a mod cannot start Minecraft or open the game-mod picker during activation or later from a timer. Handle a rejected promise, for example when the account is signed out or the profile cannot start. A server address must be a host, optional port, or IPv6 address; it cannot contain whitespace or control characters.
 
 ## Extension storage
 
@@ -55,6 +59,10 @@ Event names use `<publisher-mod-id>:<event-name>`, for example `org.example.map:
 - `{ type: "text", text }`
 - `{ type: "heading", level: 1 | 2 | 3, text }`
 - `{ type: "button", id, label, action }`
+- `{ type: "toggle", id, label, checked, action, disabled? }`
+- `{ type: "input", id, label, value, action, placeholder?, maxLength?, disabled? }`
+- `{ type: "select", id, label, value, options, action, disabled? }` where `options` contains 1–32 `{ label, value }` entries
+- `{ type: "progress", value, label? }` where `value` is between 0 and 100
 - `{ type: "stack", direction: "row" | "column", children }`
 - `{ type: "card", title?, children }`
 
@@ -62,6 +70,6 @@ The host rejects unknown fields, HTML nodes, unsupported component types, trees 
 
 ## Cleanup and limits
 
-`activate(api)` may return a cleanup function. UI registrations, event subscriptions, and `api.onAction` each return an unregister function as well. The host terminates a worker on activation failure, on invalid API messages, when it exceeds 100 API messages per second, or after it stops responding to 5-second health checks for 15 seconds. Entry points are limited to 2 MiB and each API message to 128 KiB. Each mod may register up to 32 pages, 8 home widgets, 32 navigation items, and 32 event subscriptions; NoLoader starts at most 32 extensions simultaneously.
+`activate(api)` may return a cleanup function. UI registrations, event subscriptions, and `api.onAction` each return an unregister function as well. Feature overrides are automatically removed when the mod stops. The host terminates a worker on activation failure, on invalid API messages, when it exceeds 100 API messages per second, or after it stops responding to 5-second health checks for 15 seconds. Entry points are limited to 2 MiB and each API message to 128 KiB. Each mod may register up to 32 pages, 8 home widgets, 32 navigation items, and 32 event subscriptions; NoLoader starts at most 32 extensions simultaneously.
 
-No API for launcher accounts, arbitrary files, arbitrary Tauri commands, or Minecraft-process access is exposed. A worker is a browser-process boundary, not a complete sandbox; see [security status](security.md).
+No API for launcher accounts, arbitrary files, arbitrary Tauri commands, or Minecraft-process access is exposed. Game mods imported through the explicit native picker are separate Java archives executed by the selected game loader. A worker is a browser-process boundary, not a complete sandbox; see [security status](security.md).

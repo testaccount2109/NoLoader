@@ -1,24 +1,25 @@
 import { createHash, createPublicKey } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const [outputPath, distributionFlag] = process.argv.slice(2);
 if (!outputPath || !['true', 'false'].includes(distributionFlag)) {
   throw new Error('Expected output path and distribution-build flag.');
 }
 
-const catalogUrl = process.env.NOLOADER_RELEASE_CATALOG_URL?.trim() ?? '';
-const configuredPem = process.env.NOLOADER_RELEASE_PUBLIC_KEY_PEM?.trim() ?? '';
-if (Boolean(catalogUrl) !== Boolean(configuredPem)) {
-  throw new Error('Set both NOLOADER_RELEASE_CATALOG_URL and NOLOADER_RELEASE_PUBLIC_KEY_PEM.');
+const repository = process.env.NOLOADER_RELEASE_REPOSITORY?.trim() || 'testaccount2109/noriskclient-launcher';
+if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+  throw new Error('NOLOADER_RELEASE_REPOSITORY must use the owner/repository format.');
 }
-if (distributionFlag === 'true' && (!catalogUrl || !configuredPem)) {
-  throw new Error('A distribution publish requires the official HTTPS catalog URL and pinned ECDSA public key.');
-}
+const catalogUrl = process.env.NOLOADER_RELEASE_CATALOG_URL?.trim()
+  || `https://raw.githubusercontent.com/${repository}/noloader-catalog/catalog.json`;
+const keyPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../release-public-key.pem');
+const configuredPem = process.env.NOLOADER_RELEASE_PUBLIC_KEY_PEM?.trim() || await readFile(keyPath, 'utf8');
 
 let publicKeyPem = '';
 let keyId = '';
-if (catalogUrl) {
+{
   const url = new URL(catalogUrl);
   if (url.protocol !== 'https:' || url.username || url.password || url.hash) {
     throw new Error('NOLOADER_RELEASE_CATALOG_URL must be an absolute HTTPS URL without credentials or a fragment.');
@@ -40,7 +41,7 @@ internal static class NoLoaderReleaseConfiguration
     public const string CatalogUrl = ${csharpString(catalogUrl)};
     public const string PublicKeyPem = ${csharpString(publicKeyPem)};
     public const string KeyId = ${csharpString(keyId)};
-    public static bool IsConfigured => ${Boolean(catalogUrl && publicKeyPem)};
+    public static bool IsConfigured => true;
 }
 `;
 

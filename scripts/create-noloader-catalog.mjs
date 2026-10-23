@@ -48,7 +48,7 @@ const payload = {
       channel: version.includes("beta") ? "beta" : "stable",
       upstreamCommit,
       coreVersion: "1.0.0",
-      apiVersion: "1.0.0",
+      apiVersion: "2.0.0",
       platform: "windows",
       architecture: "x64",
       minimumInstallerVersion: "1.0.0",

@@ -4,9 +4,9 @@ using System.Text.Json.Serialization;
 
 namespace NoLoader.Installer.Core;
 
-public sealed class LauncherInstallCoordinator(SignedReleaseProvider releases)
+public sealed class LauncherInstallCoordinator(SignedReleaseProvider? releases = null)
 {
-    public const string InstallerVersion = "1.0.0";
+    public const string InstallerVersion = "1.0.3";
     private const string MarkerName = ".noloader-install.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -23,7 +23,7 @@ public sealed class LauncherInstallCoordinator(SignedReleaseProvider releases)
         var installerVersion = SemanticVersion.Parse(InstallerVersion);
         var candidates = catalog.Releases
             .Where(release => release.Platform == "windows" && release.Architecture == "x64")
-            .Where(release => channel == "beta" || release.Channel == "stable")
+            .Where(release => release.Channel == channel)
             .Where(release => SemanticVersion.Parse(release.MinimumInstallerVersion).CompareTo(installerVersion) <= 0)
             .OrderByDescending(release => SemanticVersion.Parse(release.Version))
             .ToArray();
@@ -40,6 +40,29 @@ public sealed class LauncherInstallCoordinator(SignedReleaseProvider releases)
         IProgress<DownloadProgress>? downloadProgress = null,
         IProgress<string>? status = null,
         CancellationToken cancellationToken = default)
+    {
+        var signedReleases = releases ?? throw new NoLoaderInstallException("The signed release source is not configured.");
+        ValidateSelectedRelease(release);
+        return await InstallArchiveAsync(
+            release,
+            installDirectory,
+            confirmReplaceExistingInstallation,
+            (archivePath, progress, token) => signedReleases.DownloadAndVerifyAsync(release, archivePath, progress, token),
+            "Downloading and verifying the signed launcher artifact",
+            downloadProgress,
+            status,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<InstallResult> InstallArchiveAsync(
+        VerifiedLauncherRelease release,
+        string installDirectory,
+        bool confirmReplaceExistingInstallation,
+        Func<string, IProgress<DownloadProgress>?, CancellationToken, Task> acquireArchive,
+        string acquireStatus,
+        IProgress<DownloadProgress>? downloadProgress,
+        IProgress<string>? status,
+        CancellationToken cancellationToken)
     {
         ValidateSelectedRelease(release);
         var target = NormalizeTarget(installDirectory);
@@ -60,8 +83,8 @@ public sealed class LauncherInstallCoordinator(SignedReleaseProvider releases)
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            status?.Report("Downloading and verifying the signed launcher artifact");
-            await releases.DownloadAndVerifyAsync(release, archivePath, downloadProgress, cancellationToken).ConfigureAwait(false);
+            status?.Report(acquireStatus);
+            await acquireArchive(archivePath, downloadProgress, cancellationToken).ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
             status?.Report("Safely extracting the verified launcher");
@@ -75,9 +98,11 @@ public sealed class LauncherInstallCoordinator(SignedReleaseProvider releases)
                 throw new NoLoaderInstallException("The signed archive does not contain its declared launcher executable.");
 
             cancellationToken.ThrowIfCancellationRequested();
-            status?.Report("Preserving files outside the previous launcher release");
+            status?.Report(oldMarker is null
+                ? "Preserving compatible files; files that conflict with NoLoader remain in the original backup"
+                : "Preserving files outside the previous launcher release");
             if (Directory.Exists(target))
-                PreserveUnownedFiles(target, stagingPath, oldMarker?.OwnedFiles ?? ownedFiles);
+                PreserveUnownedFiles(target, stagingPath, oldMarker?.OwnedFiles ?? ownedFiles, skipReleaseConflicts: oldMarker is null);
             cancellationToken.ThrowIfCancellationRequested();
 
             var targetExists = Directory.Exists(target);
@@ -342,7 +367,7 @@ public sealed class LauncherInstallCoordinator(SignedReleaseProvider releases)
         }
     }
 
-    private static void PreserveUnownedFiles(string currentTarget, string staging, IReadOnlyList<string> ownedFiles)
+    private static void PreserveUnownedFiles(string currentTarget, string staging, IReadOnlyList<string> ownedFiles, bool skipReleaseConflicts)
     {
         var owned = new HashSet<string>(ownedFiles, StringComparer.OrdinalIgnoreCase);
         var oldTree = EnumerateTree(currentTarget);
@@ -350,8 +375,11 @@ public sealed class LauncherInstallCoordinator(SignedReleaseProvider releases)
         {
             var relative = NormalizeRelative(Path.GetRelativePath(currentTarget, directory));
             var destination = SafeDestination(staging, relative);
-            if (File.Exists(destination))
+            if (HasFileInPath(staging, relative))
+            {
+                if (skipReleaseConflicts) continue;
                 throw new NoLoaderInstallException($"The update would replace an unrecognized file at '{relative}'. Move or rename that file, then retry.");
+            }
             Directory.CreateDirectory(destination);
         }
 
@@ -360,10 +388,29 @@ public sealed class LauncherInstallCoordinator(SignedReleaseProvider releases)
             if (file.RelativePath.Equals(MarkerName, StringComparison.OrdinalIgnoreCase) || owned.Contains(file.RelativePath)) continue;
             var destination = SafeDestination(staging, file.RelativePath);
             if (File.Exists(destination) || Directory.Exists(destination))
+            {
+                if (skipReleaseConflicts) continue;
                 throw new NoLoaderInstallException($"The update would replace an unrecognized file at '{file.RelativePath}'. Move or rename that file, then retry.");
+            }
+            if (HasFileInPath(staging, file.RelativePath))
+            {
+                if (skipReleaseConflicts) continue;
+                throw new NoLoaderInstallException($"The update would replace an unrecognized file at '{file.RelativePath}'. Move or rename that file, then retry.");
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(file.FullPath, destination, overwrite: false);
         }
+    }
+
+    private static bool HasFileInPath(string root, string relative)
+    {
+        var current = Path.GetFullPath(root);
+        foreach (var segment in relative.Split('/'))
+        {
+            current = Path.Combine(current, segment);
+            if (File.Exists(current)) return true;
+        }
+        return false;
     }
 
     private static TreeSnapshot EnumerateTree(string root)

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "noloader_game_probe",
+  "version": "${version}",
+  "name": "NoLoader Game Mod Probe",
+  "description": "A Fabric game-mod starter for NoRisk Client profiles.",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.norisk.samples.noloader.NoLoaderGameProbe"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

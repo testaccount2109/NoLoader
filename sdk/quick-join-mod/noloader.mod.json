@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "org.noloader.quickjoin",
+  "name": "Quick Join Probe",
+  "version": "1.0.0",
+  "description": "Shows the most recent NoRisk Quick Play server below Play and demonstrates importing loader mods into game profiles.",
+  "apiVersion": 2,
+  "launcherVersions": ["0.6.29"],
+  "entrypoints": {
+    "frontend": "dist/index.js",
+    "styles": "styles.css"
+  },
+  "dependencies": [],
+  "optionalDependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "ui.home",
+    "ui.pages",
+    "ui.navigation",
+    "launcher.profiles.read",
+    "launcher.lastServer.read",
+    "launcher.launch"
+  ]
+}

@@ -96,6 +96,7 @@ import { useThemeStore } from '../../../store/useThemeStore';
 import { handleIrisCheckAndShowModal, IrisRequiredModal } from '../../../utils/iris-detection.tsx';
 import { parseErrorMessage } from "../../../utils/error-utils";
 import { useTranslation } from "react-i18next";
+import { useNoLoader } from "../../../noloader/NoLoaderContext";
 
 // Remove any other stray imports of uninstallContentFromProfile below this point
 
@@ -159,6 +160,7 @@ export function ModrinthSearchV2({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { showModal, hideModal } = useGlobalModal();
+  const { features } = useNoLoader();
   const searchResultsAreaRef = useRef<HTMLDivElement>(null); // Ref for the scrollable area
 
   const {
@@ -251,7 +253,14 @@ export function ModrinthSearchV2({
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
 
   // Get mod source from theme store (persistent)
-  const { modSource, setModSource } = useThemeStore();
+  const { modSource: storedModSource, setModSource } = useThemeStore();
+  const curseForgeEnabled = features["curseforge.integration"];
+  const modSource = curseForgeEnabled ? storedModSource : ModPlatform.Modrinth;
+  useEffect(() => {
+    if (!curseForgeEnabled && storedModSource === ModPlatform.CurseForge) {
+      setModSource(ModPlatform.Modrinth);
+    }
+  }, [curseForgeEnabled, storedModSource, setModSource]);
 
   // New state for tracking which projects are installed in the selected profile
   const [installedProjects, setInstalledProjects] = useState<Record<string, ContentInstallStatus | null>>({}); // Updated type
@@ -3029,7 +3038,10 @@ export function ModrinthSearchV2({
           onClearAllFilters={clearAllFilters}
           overrideDisplayContext={overrideDisplayContext} // Pass down
           modSource={modSource}
-          onModSourceChange={setModSource}
+          curseForgeEnabled={curseForgeEnabled}
+          onModSourceChange={(source) => {
+            if (source !== ModPlatform.CurseForge || curseForgeEnabled) setModSource(source);
+          }}
         />
 
         {/* Search Results Area (scrollable within the left content area) */}
@@ -3281,4 +3293,4 @@ export function ModrinthSearchV2({
 
     </div>
   );
-} 
+}

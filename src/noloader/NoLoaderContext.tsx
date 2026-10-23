@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -16,14 +17,26 @@ import {
   parseManifestJson,
   type ModManifest,
   NOLOADER_API_VERSION,
+  SUPPORTED_NOLOADER_API_VERSIONS,
 } from "./core/manifest";
+import {
+  clearModFeatureOverrides,
+  getModFeatureSnapshot,
+  isModFeatureId,
+  setModFeatureOverride,
+  subscribeModFeatures,
+  type FeatureSnapshot,
+  type ModFeatureId,
+} from "./core/feature-policy";
 import {
   resolveDependencies,
   type ModResolutionState,
 } from "./core/dependency-resolver";
 import {
+  validateModHomeWidget,
   validateModNavigation,
   validateModPage,
+  type ModHomeWidgetDescriptor,
   type ModNavigationDescriptor,
   type ModPageDescriptor,
   type ModUiNode,
@@ -82,7 +95,7 @@ export interface RegisteredModNavigation {
 
 export interface RegisteredModHomeWidget {
   modId: string;
-  widget: ModPageDescriptor;
+  widget: ModHomeWidgetDescriptor;
   styles?: string;
 }
 
@@ -117,6 +130,7 @@ interface NoLoaderContextValue {
   pages: RegisteredModPage[];
   navigation: RegisteredModNavigation[];
   homeWidgets: RegisteredModHomeWidget[];
+  features: FeatureSnapshot;
   modsDirectory: string;
   launcherVersion: string;
   loading: boolean;
@@ -127,7 +141,7 @@ interface NoLoaderContextValue {
   setEnabled(directory: string, enabled: boolean): Promise<void>;
   setSafeMode(enabled: boolean): Promise<void>;
   openModsDirectory(): Promise<void>;
-  sendAction(modId: string, action: string): void;
+  sendAction(modId: string, action: string, value?: string | number | boolean): void;
 }
 
 interface WorkerRuntime {
@@ -144,6 +158,8 @@ interface WorkerRuntime {
   allowedLaunchTokens: Map<string, number>;
   subscribedEvents: Set<string>;
   eventPublishTimes: number[];
+  apiRequestTimes: number[];
+  apiLatencySamples: number[];
 }
 
 const NoLoaderContext = createContext<NoLoaderContextValue | undefined>(
@@ -161,6 +177,11 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string>();
   const [settingsError, setSettingsError] = useState<string>();
   const [safeMode, setSafeModeState] = useState(false);
+  const features = useSyncExternalStore(
+    subscribeModFeatures,
+    getModFeatureSnapshot,
+    getModFeatureSnapshot,
+  );
   const generation = useRef(0);
   const workers = useRef(new Map<string, WorkerRuntime>());
   const runtimeFailures = useRef(new Set<string>());
@@ -211,6 +232,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
     }
     globalStyleRegistry.current.get(modId)?.remove();
     globalStyleRegistry.current.delete(modId);
+    clearModFeatureOverrides(modId);
     setPages([...pageRegistry.current.values()]);
     setNavigation([...navigationRegistry.current.values()]);
     setHomeWidgets([...homeWidgetRegistry.current.values()]);
@@ -311,7 +333,11 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
       );
       const resolution = resolveDependencies(
         enabledMods.map((mod) => mod.manifest!),
-        { apiVersion: NOLOADER_API_VERSION, launcherVersion: runningVersion },
+        {
+          apiVersion: NOLOADER_API_VERSION,
+          apiVersions: SUPPORTED_NOLOADER_API_VERSIONS,
+          launcherVersion: runningVersion,
+        },
       );
       const resolutionIssues = new Map(
         resolution.issues.map((issue) => [issue.modId, issue]),
@@ -436,12 +462,25 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
     ) => {
       const modId = runtime.manifest.id;
       const requestId = message.requestId;
+      const requestStartedAt = Date.now();
+      let responded = false;
       const respond = (success: boolean, value?: unknown, error?: string) => {
         if (
+          responded ||
           currentGeneration !== generation.current ||
           workers.current.get(modId) !== runtime
         ) {
           return;
+        }
+        responded = true;
+        const now = Date.now();
+        runtime.apiRequestTimes = runtime.apiRequestTimes.filter(
+          (time) => now - time < 60_000,
+        );
+        runtime.apiRequestTimes.push(now);
+        runtime.apiLatencySamples.push(now - requestStartedAt);
+        if (runtime.apiLatencySamples.length > 128) {
+          runtime.apiLatencySamples.splice(0, runtime.apiLatencySamples.length - 128);
         }
         runtime.handle.postMessage({
           type: "api-response",
@@ -482,7 +521,6 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
         switch (message.operation) {
           case "profiles.list": {
             requirePermission("launcher.profiles.read");
-            requireUserAction(false);
             const [response, standard] = await Promise.all([
               ProfileService.getAllProfilesAndLastPlayed(),
               ProfileService.getStandardProfiles(),
@@ -508,11 +546,60 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
           }
           case "servers.getLastPlayed": {
             requirePermission("launcher.lastServer.read");
-            requireUserAction(false);
             const server = await invoke<LastPlayedServer | null>(
               "noloader_get_last_played_server",
             );
             respond(true, server);
+            return;
+          }
+          case "gameMods.importFromPicker": {
+            requirePermission("game.mods.install");
+            requireUserAction(true);
+            const payload = message.payload as Record<string, unknown> | undefined;
+            const profileId = payload?.profileId;
+            if (typeof profileId !== "string" || profileId.length > 64) {
+              throw new Error("Game mod import request has an invalid profile ID.");
+            }
+            const [response, standard] = await Promise.all([
+              ProfileService.getAllProfilesAndLastPlayed(),
+              ProfileService.getStandardProfiles(),
+            ]);
+            const profile = [...standard.profiles, ...response.all_profiles].find(
+              (entry) => entry.id === profileId,
+            );
+            if (!profile) {
+              throw new Error("The requested launcher profile does not exist.");
+            }
+            if (!["fabric", "forge", "quilt", "neoforge"].includes(profile.loader.toLowerCase())) {
+              throw new Error("Install a game mod loader for this profile before importing game mods.");
+            }
+            await invoke<void>("import_local_mods", { profileId });
+            respond(true);
+            return;
+          }
+          case "performance.getSnapshot": {
+            requirePermission("launcher.performance.read");
+            const now = Date.now();
+            const activeRuntimes = [...workers.current.values()];
+            const recentRequests = activeRuntimes.flatMap((activeRuntime) =>
+              activeRuntime.apiRequestTimes.filter((time) => now - time < 60_000),
+            );
+            const latencies = activeRuntimes.flatMap(
+              (activeRuntime) => activeRuntime.apiLatencySamples,
+            );
+            respond(true, {
+              activeMods: activeRuntimes.filter((activeRuntime) => activeRuntime.activated).length,
+              apiCallsLastMinute: recentRequests.length,
+              averageApiLatencyMs: latencies.length
+                ? Math.round(latencies.reduce((total, latency) => total + latency, 0) / latencies.length)
+                : 0,
+              maxApiLatencyMs: latencies.length ? Math.max(...latencies) : 0,
+            });
+            return;
+          }
+          case "features.getSnapshot": {
+            requirePermission("launcher.features.manage");
+            respond(true, getModFeatureSnapshot());
             return;
           }
           case "launcher.launchProfile": {
@@ -717,6 +804,21 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
+      if (message.type === "feature-override") {
+        if (!runtime.manifest.permissions.includes("launcher.features.manage")) {
+          failWorkerRef.current(
+            modId,
+            "The extension changed launcher features without requesting `launcher.features.manage`.",
+          );
+          return;
+        }
+        if (!isModFeatureId(message.featureId) || typeof message.enabled !== "boolean") {
+          failWorkerRef.current(modId, "Launcher feature override is malformed or unsupported.");
+          return;
+        }
+        setModFeatureOverride(modId, message.featureId as ModFeatureId, message.enabled);
+        return;
+      }
       if (message.type === "ready") {
         const hasButtons = [...pageRegistry.current.values()].some(
           (entry) =>
@@ -777,7 +879,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
           );
           return;
         }
-        const parsed = validateModPage(message.widget);
+        const parsed = validateModHomeWidget(message.widget);
         if (parsed.ok === false) {
           failWorkerRef.current(modId, parsed.message);
           return;
@@ -831,7 +933,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
           failWorkerRef.current(modId, "Home-widget update is missing its ID.");
           return;
         }
-        const parsed = validateModPage(message.widget);
+        const parsed = validateModHomeWidget(message.widget);
         if (parsed.ok === false) {
           failWorkerRef.current(modId, parsed.message);
           return;
@@ -1135,6 +1237,8 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
         allowedLaunchTokens: new Map(),
         subscribedEvents: new Set(),
         eventPublishTimes: [],
+        apiRequestTimes: [],
+        apiLatencySamples: [],
       };
       let rejectReady: ((error: Error) => void) | undefined;
       let resolveReady: (() => void) | undefined;
@@ -1253,9 +1357,17 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
     await openPath(modsDirectory);
   }, [modsDirectory]);
 
-  const sendAction = useCallback((modId: string, action: string) => {
+  const sendAction = useCallback((modId: string, action: string, value?: string | number | boolean) => {
     const runtime = workers.current.get(modId);
     if (!runtime || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(action)) return;
+    if (
+      value !== undefined &&
+      !(
+        typeof value === "boolean" ||
+        (typeof value === "number" && Number.isFinite(value)) ||
+        (typeof value === "string" && value.length <= 1000)
+      )
+    ) return;
     const now = Date.now();
     for (const [token, issuedAt] of runtime.allowedLaunchTokens) {
       if (now - issuedAt > 30_000) runtime.allowedLaunchTokens.delete(token);
@@ -1267,7 +1379,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
     }
     const gestureToken = crypto.randomUUID();
     runtime.allowedLaunchTokens.set(gestureToken, now);
-    runtime.handle.postMessage({ type: "action", action, gestureToken });
+    runtime.handle.postMessage({ type: "action", action, value, gestureToken });
   }, []);
 
   useEffect(() => {
@@ -1284,6 +1396,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
       pages,
       navigation,
       homeWidgets,
+      features,
       modsDirectory,
       launcherVersion,
       loading,
@@ -1301,6 +1414,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
       pages,
       navigation,
       homeWidgets,
+      features,
       modsDirectory,
       launcherVersion,
       loading,
@@ -1343,7 +1457,7 @@ function errorMessage(error: unknown): string {
 
 function pageContainsActionButton(page: ModPageDescriptor): boolean {
   const containsButton = (node: ModUiNode): boolean => {
-    if (node.type === "button") return true;
+    if (node.type === "button" || node.type === "toggle" || node.type === "input" || node.type === "select") return true;
     if (node.type === "stack" || node.type === "card") {
       return node.children.some(containsButton);
     }

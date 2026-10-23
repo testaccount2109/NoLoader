@@ -1,0 +1,14 @@
+{
+  "name": "@noloader/quick-join-mod",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "yarn typecheck && vite build"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "vite": "6.3.5"
+  }
+}

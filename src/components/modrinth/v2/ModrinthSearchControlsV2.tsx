@@ -53,6 +53,7 @@ interface ModrinthSearchControlsV2Props {
   onClearAllFilters: () => void;
   overrideDisplayContext?: "detail" | "standalone";
   modSource: ModPlatform;
+  curseForgeEnabled: boolean;
   onModSourceChange: (source: ModPlatform) => void;
 }
 
@@ -85,6 +86,7 @@ export const ModrinthSearchControlsV2: React.FC<
   onClearAllFilters,
   overrideDisplayContext,
   modSource,
+  curseForgeEnabled,
   onModSourceChange,
 }) => {
   const { t } = useTranslation();
@@ -174,23 +176,25 @@ export const ModrinthSearchControlsV2: React.FC<
               <span className="hidden sm:inline">Modrinth</span>
             </button>
 
-            <button
-              onClick={() => onModSourceChange(ModPlatform.CurseForge)}
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-1 rounded-md font-smallcaps text-base transition-all duration-200 min-h-[2.5rem]",
-                modSource === ModPlatform.CurseForge
-                  ? "bg-orange-400/40 text-white border border-orange-300/30"
-                  : "bg-black/30 text-white/70 hover:text-white hover:bg-black/40 border border-transparent"
-              )}
-              title={t('content.search_curseforge')}
-            >
-              <img
-                src="https://cdn.norisk.gg/misc/curseforge.webp"
-                alt="CurseForge"
-                className="w-5 h-5 object-contain"
-              />
-              <span className="hidden sm:inline">CurseForge</span>
-            </button>
+            {curseForgeEnabled ? (
+              <button
+                onClick={() => onModSourceChange(ModPlatform.CurseForge)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2 py-1 rounded-md font-smallcaps text-base transition-all duration-200 min-h-[2.5rem]",
+                  modSource === ModPlatform.CurseForge
+                    ? "bg-orange-400/40 text-white border border-orange-300/30"
+                    : "bg-black/30 text-white/70 hover:text-white hover:bg-black/40 border border-transparent"
+                )}
+                title={t('content.search_curseforge')}
+              >
+                <img
+                  src="https://cdn.norisk.gg/misc/curseforge.webp"
+                  alt="CurseForge"
+                  className="w-5 h-5 object-contain"
+                />
+                <span className="hidden sm:inline">CurseForge</span>
+              </button>
+            ) : null}
           </div>
         </div>
 

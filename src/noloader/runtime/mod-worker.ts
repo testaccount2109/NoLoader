@@ -85,6 +85,15 @@ const api = Object.freeze({
   updateGlobalStyles(styles) {
     send({ type: "update-global-styles", styles });
   },
+  theme: Object.freeze({
+    registerGlobalStyles(styles) {
+      send({ type: "register-global-styles", styles });
+      return trackRegistration(() => send({ type: "unregister-global-styles" }));
+    },
+    updateGlobalStyles(styles) {
+      send({ type: "update-global-styles", styles });
+    },
+  }),
   onAction(callback) {
     if (typeof callback !== "function") throw new TypeError("onAction expects a function.");
     if (removeActionHandler) removeActionHandler();
@@ -107,6 +116,18 @@ const api = Object.freeze({
   }),
   launcher: Object.freeze({
     launchProfile(request) { return requestApi("launcher.launchProfile", request); },
+  }),
+  gameMods: Object.freeze({
+    importFromPicker(profileId) { return requestApi("gameMods.importFromPicker", { profileId }); },
+  }),
+  features: Object.freeze({
+    setEnabled(featureId, enabled) {
+      send({ type: "feature-override", featureId, enabled });
+    },
+    getSnapshot() { return requestApi("features.getSnapshot"); },
+  }),
+  performance: Object.freeze({
+    getSnapshot() { return requestApi("performance.getSnapshot"); },
   }),
   storage: Object.freeze({
     get(key) { return requestApi("storage.get", { key }); },
@@ -172,7 +193,7 @@ async function handleControlMessage(event) {
     const previousActionToken = activeUserActionToken;
     activeUserActionToken = typeof message.gestureToken === "string" ? message.gestureToken : undefined;
     try {
-      await actionHandler(message.action);
+      await actionHandler(message.action, message.value);
     } catch (error) {
       send({ type: "error", message: String(error?.message ?? error) });
     } finally {

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "org.noloader.performance-controls",
+  "name": "Launcher Performance Controls",
+  "version": "1.0.0",
+  "description": "Controls optional launcher features and reports NoLoader extension API activity.",
+  "authors": ["NoLoader SDK"],
+  "apiVersion": 2,
+  "launcherVersions": ["0.6.29"],
+  "entrypoints": {
+    "frontend": "dist/index.js"
+  },
+  "dependencies": [],
+  "optionalDependencies": [],
+  "conflicts": [],
+  "permissions": ["ui.pages", "ui.navigation", "launcher.features.manage", "launcher.performance.read"]
+}

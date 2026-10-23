@@ -5,7 +5,7 @@ import type { ModPageDescriptor, ModUiNode } from "./core/ui-extension";
 interface ModUiTreeProps {
   page: ModPageDescriptor;
   styles?: string;
-  onAction(action: string): void;
+  onAction(action: string, value?: string | number | boolean): void;
 }
 
 const hostStyles = `
@@ -25,6 +25,12 @@ const hostStyles = `
   .noloader-action { width: fit-content; min-height: 40px; padding: 8px 14px; border: 1px solid rgba(107, 166, 255, .55); border-radius: 7px; background: rgba(46, 110, 201, .18); color: #eff6ff; font: inherit; font-weight: 600; cursor: pointer; }
   .noloader-action:hover { background: rgba(46, 110, 201, .32); }
   .noloader-action:focus-visible { outline: 2px solid #8dbaff; outline-offset: 2px; }
+  .noloader-control { display: grid; gap: 6px; color: #c1cad8; }
+  .noloader-control input, .noloader-control select { min-height: 38px; max-width: 100%; padding: 7px 10px; border: 1px solid rgba(186, 203, 226, .2); border-radius: 6px; background: rgba(4, 8, 14, .6); color: #f3f6fb; font: inherit; }
+  .noloader-toggle { display: flex; align-items: center; gap: 10px; width: fit-content; color: #e7edf7; cursor: pointer; }
+  .noloader-toggle input { accent-color: #68a7ff; width: 17px; height: 17px; }
+  .noloader-progress { display: grid; gap: 6px; color: #c1cad8; }
+  .noloader-progress progress { width: 100%; height: 9px; accent-color: #68a7ff; }
 `;
 
 export function ModUiTree({ page, styles, onAction }: ModUiTreeProps) {
@@ -80,7 +86,7 @@ function ModNode({
   onAction,
 }: {
   node: ModUiNode;
-  onAction(action: string): void;
+  onAction(action: string, value?: string | number | boolean): void;
 }) {
   switch (node.type) {
     case "text":
@@ -98,6 +104,53 @@ function ModNode({
         >
           {node.label}
         </button>
+      );
+    case "toggle":
+      return (
+        <label className="noloader-toggle">
+          <input
+            type="checkbox"
+            checked={node.checked}
+            disabled={node.disabled}
+            onChange={(event) => onAction(node.action, event.currentTarget.checked)}
+          />
+          <span>{node.label}</span>
+        </label>
+      );
+    case "input":
+      return (
+        <label className="noloader-control">
+          <span>{node.label}</span>
+          <input
+            value={node.value}
+            placeholder={node.placeholder}
+            maxLength={node.maxLength}
+            disabled={node.disabled}
+            onChange={(event) => onAction(node.action, event.currentTarget.value)}
+          />
+        </label>
+      );
+    case "select":
+      return (
+        <label className="noloader-control">
+          <span>{node.label}</span>
+          <select
+            value={node.value}
+            disabled={node.disabled}
+            onChange={(event) => onAction(node.action, event.currentTarget.value)}
+          >
+            {node.options.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+      );
+    case "progress":
+      return (
+        <label className="noloader-progress">
+          {node.label ? <span>{node.label}</span> : null}
+          <progress max={100} value={node.value} />
+        </label>
       );
     case "stack":
       return (

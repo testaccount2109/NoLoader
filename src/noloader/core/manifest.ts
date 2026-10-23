@@ -1,5 +1,6 @@
 export const MANIFEST_SCHEMA_VERSION = 1;
-export const NOLOADER_API_VERSION = 1;
+export const NOLOADER_API_VERSION = 2;
+export const SUPPORTED_NOLOADER_API_VERSIONS = [1, 2] as const;
 export const MOD_MANIFEST_FILE = "noloader.mod.json";
 export const MAX_MANIFEST_BYTES = 256 * 1024;
 
@@ -11,6 +12,9 @@ export const PERMISSION_IDS = [
   "launcher.profiles.read",
   "launcher.lastServer.read",
   "launcher.launch",
+  "game.mods.install",
+  "launcher.features.manage",
+  "launcher.performance.read",
   "storage.mod",
   "events.publish",
   "events.subscribe",

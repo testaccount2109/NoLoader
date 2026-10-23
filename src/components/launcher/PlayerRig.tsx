@@ -18,6 +18,7 @@ import { useWindowFocus } from '../../hooks/useWindowFocus';
 import { useMinecraftAuthStore } from '../../store/minecraft-auth-store';
 import { useQualitySettingsStore } from '../../store/quality-settings-store';
 import { useThemeStore } from '../../store/useThemeStore';
+import { useNoLoader } from '../../noloader/NoLoaderContext';
 
 const NO_ACCOUNT_SKIN_URL = "/skins/steve.png";
 const RIG_SHADOW = 'drop-shadow(5px 10px 5px rgba(0,0,0,0.75))';
@@ -74,6 +75,7 @@ function useMinLoading(active: boolean, minMs: number): boolean {
 
 export function PlayerRig({ playerName, outline }: PlayerRigProps) {
   const { t } = useTranslation();
+  const { features } = useNoLoader();
   const accentColor = useThemeStore((state) => state.accentColor);
   const activeAccount = useMinecraftAuthStore((state) => state.activeAccount);
   const { textureUrl, variant, loading: skinLoading } = useActiveSkinTexture();
@@ -83,7 +85,7 @@ export function PlayerRig({ playerName, outline }: PlayerRigProps) {
   const idleEmote = useIdleEmote();
   const wants3d = useQualitySettingsStore((s) => s.cosmeticRenderer3d);
   const webglOk = isWebGLAvailable();
-  const animated = wants3d && webglOk;
+  const animated = wants3d && webglOk && features["launcher.effects"];
   const isWindowFocused = useWindowFocus();
   const hasAccount = !!activeAccount;
   const loading = useMinLoading(
