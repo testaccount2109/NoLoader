@@ -3,8 +3,10 @@ name: NoLoader CI
 on:
   push:
     branches: ["noloader/**"]
+    paths-ignore: ["catalog.json"]
   pull_request:
     branches: ["noloader/**"]
+    paths-ignore: ["catalog.json"]
   workflow_dispatch:
 
 permissions:

@@ -83,6 +83,7 @@ jobs:
             Copy-Item -LiteralPath $source -Destination (Join-Path $stage $name)
           }
           Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'LICENSE') -Destination (Join-Path $stage 'LICENSE')
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'NOLOADER-BUILD-NOTICE.txt') -Destination (Join-Path $stage 'NOLOADER-BUILD-NOTICE.txt')
           Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'THIRD-PARTY-LICENSES.txt') -Destination (Join-Path $stage 'THIRD-PARTY-LICENSES.txt')
           Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archivePath -CompressionLevel Optimal -Force
           "archive_name=$archiveName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
@@ -128,7 +129,7 @@ jobs:
           $catalogPath = Join-Path $env:RUNNER_TEMP 'NoLoader-Catalog.json'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git fetch origin noloader-catalog 2>$null
+          git fetch origin refs/heads/noloader-catalog:refs/remotes/origin/noloader-catalog 2>$null
           if ($LASTEXITCODE -eq 0) {
             git checkout -B noloader-catalog origin/noloader-catalog
           } else {

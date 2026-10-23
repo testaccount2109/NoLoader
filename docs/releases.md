@@ -1,6 +1,6 @@
 # Release process status
 
-The source checkout includes the NoLoader core, a plain Windows installer, and a locally built prepared launcher ZIP. No prepared artifact or signed release catalog has been published. The upstream Tauri updater has no configured endpoint, and no publisher key or public release repository is configured. The installer must not guess a URL or fall back to an unmodified launcher.
+The public source fork includes the NoLoader core, a plain Windows installer, and a locally built prepared launcher ZIP. No prepared artifact or signed release catalog has been published. The upstream Tauri updater has no configured endpoint. The P-256 catalog key is pinned in the source and its private half is stored as an Actions secret. The installer must not guess a URL or fall back to an unmodified launcher.
 
 Before publishing a prepared launcher, a release must identify:
 
@@ -12,4 +12,4 @@ Before publishing a prepared launcher, a release must identify:
 - source changes and GPL-3.0 notices;
 - third-party runtime/native dependency licenses.
 
-The installer verifies signed catalog metadata and the artifact size and SHA-256 before writing files. It requires explicit confirmation before replacing the selected launcher folder, retains complete backups, and can restore the recorded original NoRisk folder after later updates. A public distribution is still blocked until the publisher configures a public artifact source, catalog and signing key; there is no public installable release yet.
+The installer verifies signed catalog metadata and the artifact size and SHA-256 before writing files. It requires explicit confirmation before replacing the selected launcher folder, retains complete backups, and can restore the recorded original NoRisk folder after later updates. The release workflow publishes the prepared Windows build and installer and refreshes the signed raw catalog weekly. The first tagged release still needs to complete before there is a public installable binary.

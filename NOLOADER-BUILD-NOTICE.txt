@@ -1,0 +1,17 @@
+NoLoader community build notice
+==============================
+
+This is a modified NoRisk Launcher build containing the NoLoader launcher
+modding framework. The NoLoader changes were made on 2026-10-23 from NoRisk
+Launcher upstream commit bfc2e0564f9c0c96d3ce9062deab316647932c64.
+
+NoLoader is an unofficial community build. It is not affiliated with or
+endorsed by NoRisk Client. NoRisk names and marks identify the upstream
+software and remain with their respective owners.
+
+This work is licensed under GNU GPL version 3.0. The complete source code,
+license, and build scripts are published at:
+https://github.com/testaccount2109/noriskclient-launcher
+
+The software is provided without warranty. Third-party runtime licenses and
+notices are included beside the launcher executable.

@@ -25,7 +25,7 @@ There is no root `AGENTS.md`. The always-applied Cursor rule at `.cursor/rules/n
 
 The main Tauri capability grants the launcher window broad filesystem access, including read/write scopes for user locations, and process/plugin access. NoLoader therefore dynamically imports mod ES modules in dedicated Web Workers and never imports them into the launcher React context. The module receives only the NoLoader API; the host communicates with the worker bootstrap through a private `MessagePort` and validates API permissions and UI descriptors. This boundary does not provide an OS sandbox or hard CPU/memory quotas. See the current [security status](modding/security.md) and [threat model](security/threat-model.md).
 
-The Tauri updater has no configured endpoints. A NoLoader installer therefore needs its own explicit, versioned release metadata and artifact source before it can install anything. No release URL, signing key, or published NoLoader artifact is present in this checkout.
+The Tauri updater has no configured endpoints. The installer uses its own versioned signed catalog. The public fork now pins a P-256 verification key and has a release workflow, but no public launcher artifact or catalog has been published yet.
 
 ## Baseline environment and commands
 
@@ -53,7 +53,7 @@ The frontend integration lives in `src/lib/router.tsx`, `src/components/layout/A
 - The `noriskclient-backend` gitlink has no mapping or checked-out source in this commit. Confirm its intended source before any build or behavior that depends on it.
 - Workers prevent direct access to the launcher DOM and Tauri bridge, but they do not provide hard resource quotas. Platform behavior and CSP enforcement need native runtime verification.
 - No upstream frontend test framework was configured. The NoLoader core uses Node's built-in `node:test` API through a dev-only TypeScript runner; no test framework or runtime dependency was added.
-- No public NoLoader release repository, catalog URL, publisher key, or published prepared launcher is configured. A local Windows launcher archive exists, but the installer correctly disables installation until a trusted release catalog and artifact are published.
+- The public source fork and catalog signing key are configured, but no public signed catalog or prepared launcher is published. A local Windows launcher archive exists; the installer correctly disables distribution installs until the first trusted release is published.
 - The brief names a Windows `Noloader.exe` installer, while upstream packaging targets Windows, macOS, and Linux. Treat Windows as the initial installer target unless later requirements establish otherwise.
 - License compatibility of every shipped dependency and native binary must be checked before redistributing a prepared build.
 
@@ -61,4 +61,4 @@ The frontend integration lives in `src/lib/router.tsx`, `src/components/layout/A
 
 `node node_modules/typescript/bin/tsc --noEmit` passes. `yarn test:noloader` builds the SDK example and passes 17 tests covering sample activation, worker RPC, manifests, compatibility, dependencies, UI/style validation, storage/events, and safety limits. The Vite build completes with the upstream warnings listed above. Rust NoLoader unit tests pass (6 tests). A Windows `yarn tauri build --no-bundle` completed and produced `src-tauri/target/release/noriskclient-launcher-v3.exe`; the packaged local ZIP contains that executable and staged native runtime assets. The installer core passes 31 tests, and its WPF Release build completes with zero warnings and errors. The installer UI has not been used to replace the user's installed launcher, and the packaged Tauri app has not yet been interactively launched. Browser harnesses use labeled fake entries and do not replace desktop-runtime verification.
 
-The source branch has not been published as a public repository or release. The local launcher artifact is not accompanied by a public signed release catalog, and the installer remains disabled for distribution until one is configured. A successful local build does not verify every bundled dependency's redistribution terms; that license review remains a release prerequisite.
+The source branch is public at `https://github.com/testaccount2109/noriskclient-launcher`. No binary release or signed catalog is published yet, and the installer remains disabled for distribution until a release workflow publishes them. A successful local build does not complete a legal review of every bundled dependency; retain the packaged license notices and verify upstream component source availability before announcing the binary release.

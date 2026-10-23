@@ -6,8 +6,8 @@ NoLoader is an unofficial community build of NoRisk Launcher. The source checkou
 
 | Component | Version/source | License and included notice |
 | --- | --- | --- |
-| FFmpeg shared libraries | BtbN FFmpeg-Builds `n8.1.2` `win64-gpl-shared` archive, pinned by SHA-256 in `scripts/setup-native-deps.mjs` | GPL-3.0; `ffmpeg-LICENSE.txt` and `ffmpeg-NOTICE.txt` |
-| OBS graphics hooks | OBS Studio `32.1.1`, delivered in the pinned native dependency archive | GPL-2.0-or-later; `graphics-hook-GPL-2.0.txt` and `graphics-hook-NOTICE.txt` |
+| FFmpeg shared libraries | [BtbN FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), `n8.1.2` `win64-gpl-shared` archive, pinned by SHA-256 in `scripts/setup-native-deps.mjs` | GPL-3.0; `ffmpeg-LICENSE.txt` and `ffmpeg-NOTICE.txt` |
+| OBS graphics hooks | [OBS Studio tag 32.1.1](https://github.com/obsproject/obs-studio/tree/32.1.1), delivered in the pinned native dependency archive | GPL-2.0-or-later; `graphics-hook-GPL-2.0.txt` and `graphics-hook-NOTICE.txt` |
 | NoRisk capture engine | Built from this repository's Rust sources | Covered by the upstream launcher source license and corresponding source release |
 
 The NoLoader release workflow packages the required runtime files and their notices beside the launcher executable. `scripts/pack-capture-runtime.mjs` uses the same manifest when building the standalone capture archive.
