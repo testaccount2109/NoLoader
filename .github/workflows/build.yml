@@ -3,13 +3,12 @@ name: Build and Release
 on:
   push:
     branches:
-      - '**' # Build on push to v3 branch
+      - 'upstream/**' # Keep the upstream release workflow off NoLoader branches.
     tags:
-      - "v*"  # Release on v* tags
-  workflow_dispatch: {} # Allow manual dispatch
+      - "upstream-v*"
 
 jobs:
-  # --- JOB 0: Rust tests ---
+  # --- JOB 0: Rust, NoLoader, and installer tests ---
   test:
     runs-on: ubuntu-22.04
     # cargo test executes every dependency's build.rs, so this job must not hold a
@@ -36,6 +35,30 @@ jobs:
       - name: cargo test
         working-directory: ./src-tauri
         run: cargo test --workspace
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Type-check launcher frontend
+        run: yarn tsc --noEmit
+
+      - name: Test NoLoader core and example mod
+        run: yarn test:noloader
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.402
+
+      - name: Test signed installer core
+        working-directory: ./apps/installer
+        run: dotnet test NoLoader.Installer.Tests/NoLoader.Installer.Tests.csproj
 
   # --- JOB 0b: compile the macOS 26 app icon ---
   # actool only understands Icon Composer .icon documents when it comes from

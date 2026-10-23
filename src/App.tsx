@@ -114,7 +114,7 @@ export function App() {
   const ready = accountsLoaded && legalChecked;
   const showWelcome = ready && !activeAccount && !welcomeSkipped;
 
-  const activeTab = location.pathname.substring(1) || "play";
+  const activeTab = location.pathname.substring(1).split("/")[0] || "play";
 
   const settingsOpen = useSettingsModalStore((s) => s.isOpen);
   const screenTimeTab = settingsOpen ? "settings" : activeTab.split("/")[0];

@@ -1,0 +1,61 @@
+name: NoLoader CI
+
+on:
+  push:
+    branches: ["noloader/**"]
+  pull_request:
+    branches: ["noloader/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+      - name: Type-check launcher
+        run: yarn tsc --noEmit
+      - name: Build and check NoLoader SDK example
+        run: yarn test:noloader
+      - name: Build frontend
+        run: yarn build
+
+  native:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri Linux prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+      - name: Check NoLoader native commands
+        working-directory: src-tauri
+        run: cargo test --locked --lib noloader::tests
+
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.402
+      - name: Check installer core
+        working-directory: apps/installer
+        run: dotnet test NoLoader.Installer.Tests/NoLoader.Installer.Tests.csproj --configuration Release
+      - name: Build plain installer
+        working-directory: apps/installer
+        run: dotnet build NoLoader.Installer/NoLoader.Installer.csproj --configuration Release

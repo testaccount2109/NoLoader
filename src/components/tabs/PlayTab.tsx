@@ -22,9 +22,12 @@ import { isWebGLAvailable } from "@noriskclient/nrc-skin-renderer";
 import { useLauncherTheme } from "../../hooks/useLauncherTheme";
 import { setDiscordState } from "../../utils/discordRpc";
 import { useTranslation } from "react-i18next";
+import { useNoLoader } from "../../noloader/NoLoaderContext";
+import { ModUiTree } from "../../noloader/ModUiTree";
 
 export function PlayTab() {
   const { t } = useTranslation();
+  const { homeWidgets, sendAction } = useNoLoader();
   const {
     profiles,
     selectedProfile: storeSelectedProfile,
@@ -104,7 +107,19 @@ export function PlayTab() {
           className="absolute top-6 left-6 z-10"
         /> */}
 
-        <div className="relative z-10">
+        <div className="relative z-10 flex w-full flex-col items-center gap-5">
+          {homeWidgets.length > 0 && (
+            <section className="w-full max-w-3xl space-y-3">
+              {homeWidgets.map(({ modId, widget, styles }) => (
+                <ModUiTree
+                  key={`${modId}:${widget.id}`}
+                  page={widget}
+                  styles={styles}
+                  onAction={(action) => sendAction(modId, action)}
+                />
+              ))}
+            </section>
+          )}
           {profilesError && !loading && (
             <ErrorMessage
               message={profilesError || "An unknown error occurred"}

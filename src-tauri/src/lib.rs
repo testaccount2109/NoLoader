@@ -8,6 +8,7 @@ pub mod friends;
 pub mod integrations;
 pub mod logging;
 pub mod minecraft;
+pub mod noloader;
 pub mod state;
 pub mod sync;
 pub mod support;

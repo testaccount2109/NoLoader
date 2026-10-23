@@ -28,6 +28,7 @@ const ARCHIVE = {
     "ffmpeg/include/libavcodec/avcodec.h",
     "ffmpeg/LICENSE.txt",
     ...HOOK_FILES.map((dll) => `graphics-hook/${dll}`),
+    "graphics-hook/LICENSE.txt",
   ],
 };
 
@@ -93,6 +94,7 @@ console.log("\nNative capture dependencies");
 
 if (!force && isCurrent()) {
   writeNotices();
+  writeBundledLicenses();
   ok(`${ARCHIVE.label} (already there)`);
 } else {
   await install();
@@ -141,13 +143,15 @@ async function install() {
   }
   fs.rmSync(staging, { recursive: true, force: true });
 
+  writeNotices();
+  writeBundledLicenses();
+
   for (const relative of ARCHIVE.expect) {
     if (!fs.existsSync(path.join(thirdParty, relative))) {
       throw new Error(`${ARCHIVE.label}: ${relative} is missing after unpacking.`);
     }
   }
 
-  writeNotices();
   fs.writeFileSync(path.join(thirdParty, ARCHIVE.stampFile), STAMP, "utf8");
 }
 
@@ -159,6 +163,13 @@ function writeNotices() {
       fs.writeFileSync(at, notice, "utf8");
     }
   }
+}
+
+function writeBundledLicenses() {
+  const source = path.join(repoRoot, "scripts", "licenses", "GPL-2.0.txt");
+  const destination = path.join(thirdParty, "graphics-hook", "LICENSE.txt");
+  if (!fs.existsSync(source)) throw new Error("The bundled OBS GPL-2.0 license text is missing.");
+  fs.copyFileSync(source, destination);
 }
 
 function isCurrent() {

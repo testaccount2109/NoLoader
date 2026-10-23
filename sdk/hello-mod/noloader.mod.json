@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "org.noloader.hello",
+  "name": "Hello NoLoader",
+  "version": "1.0.0",
+  "description": "A small example of a NoLoader launcher page and action.",
+  "apiVersion": 1,
+  "launcherVersions": ["0.6.29"],
+  "entrypoints": {
+    "frontend": "dist/index.js",
+    "styles": "styles.css"
+  },
+  "dependencies": [],
+  "optionalDependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "ui.pages",
+    "ui.navigation",
+    "ui.home",
+    "launcher.profiles.read",
+    "launcher.lastServer.read",
+    "launcher.launch",
+    "storage.mod"
+  ]
+}

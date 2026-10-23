@@ -1,3 +1,13 @@
+## NoLoader developer preview
+
+NoLoader is an unofficial community build based on NoRisk Launcher. It is not affiliated with or endorsed by NoRisk Client. The upstream name and marks identify the software this build extends; their owners retain those rights.
+
+This branch integrates NoLoader into the NoRisk Launcher source. Enabled extensions start with the normal launcher and can add validated pages, navigation, home widgets, global styles, per-mod storage, and extension-to-extension events. The documented launcher API can read limited profile metadata, retrieve the last recorded multiplayer Quick Play server, and request a click-confirmed launch that connects directly to that server. A TypeScript SDK and working example are in `sdk/hello-mod`.
+
+Extensions run in dedicated workers and use a bounded, permission-checked API. They do not patch Minecraft files, inject into the game process, or receive arbitrary Tauri commands, account secrets, or unrestricted native access. Version 1 does not support arbitrary React components, native plug-ins, or backend modules. See the [modding guide](docs/modding/getting-started.md), [security status](docs/modding/security.md), and [development guide](docs/development.md).
+
+The repository also includes source for a plain Windows installer that verifies signed catalogs, preserves the old launcher folder, and can restore the original NoRisk installation. A local prepared launcher archive has been built, but no signed public release catalog, publisher key, or public NoLoader release is configured yet. The installer intentionally keeps installation disabled until those release inputs exist. See [installation status](docs/installation.md), [third-party notices](docs/third-party.md), and [release requirements](docs/releases.md).
+
 ## Issues
 
 If you notice any bugs or missing features, you can let us know by opening an issue [here](https://norisk.gg/issues).

@@ -67,7 +67,7 @@ export async function launch(
   }
 
   if (overrides) {
-    return invoke<void>("launch_profile_with_overrides", {
+    await invoke<void>("launch_profile_with_overrides", {
       profileRef: id,
       overrides,
       quickPlaySingleplayer,
@@ -75,15 +75,26 @@ export async function launch(
       localMods: [],
       account: null,
     });
+  } else {
+    await invoke<void>("launch_profile", {
+      id,
+      quickPlaySingleplayer,
+      quickPlayMultiplayer,
+      migrationInfo,
+      skipLastPlayedUpdate,
+    });
   }
 
-  return invoke<void>("launch_profile", {
-    id,
-    quickPlaySingleplayer,
-    quickPlayMultiplayer,
-    migrationInfo,
-    skipLastPlayedUpdate
-  });
+  if (quickPlayMultiplayer) {
+    try {
+      await invoke<void>("noloader_record_last_played_server", {
+        profileId: id,
+        address: quickPlayMultiplayer,
+      });
+    } catch (error) {
+      logWarn(`[ProcessService] Could not save the last-played server: ${parseErrorMessage(error)}`);
+    }
+  }
 }
 
 export async function abort(profileId: string): Promise<void> {

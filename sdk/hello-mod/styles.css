@@ -1,0 +1,7 @@
+.noloader-page {
+  gap: 18px;
+}
+
+.noloader-card {
+  border-color: rgba(110, 165, 245, 0.24);
+}

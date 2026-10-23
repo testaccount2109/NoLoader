@@ -1,6 +1,9 @@
 {
   "name": "noriskclient-launcher-v3",
   "private": true,
+  "workspaces": [
+    "sdk/hello-mod"
+  ],
   "version": "0.1.0",
   "type": "module",
   "scripts": {
@@ -8,6 +11,8 @@
     "predev": "yarn icons && yarn native-deps",
     "build": "tsc && vite build",
     "prebuild": "yarn icons && yarn native-deps",
+    "test:noloader": "yarn sdk:hello-mod:build && tsx src/noloader/core.test.ts",
+    "sdk:hello-mod:build": "yarn workspace @noloader/hello-mod build",
     "preview": "vite preview",
     "tauri": "tauri",
     "icons": "node scripts/generate-icon-bundle.mjs",
@@ -93,6 +98,7 @@
     "npm": "^11.3.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.23.15",
     "typescript": "~5.6.2",
     "vite": "^6.0.3"
   }

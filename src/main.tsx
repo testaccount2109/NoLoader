@@ -7,6 +7,7 @@ import { router } from "./lib/router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ClipOverlay } from "./components/overlay/ClipOverlay";
 import i18n from "./i18n/i18n";
+import { NoLoaderProvider } from "./noloader/NoLoaderContext";
 import "./styles/globals.css";
 
 const isOverlay = (() => {
@@ -25,7 +26,7 @@ if (isOverlay) {
 
 const render = () => ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <I18nextProvider i18n={i18n}>
-    {isOverlay ? <ClipOverlay /> : <RouterProvider router={router} />}
+    {isOverlay ? <ClipOverlay /> : <NoLoaderProvider><RouterProvider router={router} /></NoLoaderProvider>}
   </I18nextProvider>,
 );
 

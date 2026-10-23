@@ -1254,7 +1254,7 @@ pub struct ServerInfo {
 /// Parses a Minecraft server address string (e.g., "example.com", "example.com:25566", "[::1]:25565")
 /// into host and port, handling default port and IPv6 bracket notation.
 /// Inspired by Modrinth Launcher's implementation.
-fn parse_minecraft_address(address: &str) -> std::result::Result<(String, u16), String> {
+pub(crate) fn parse_minecraft_address(address: &str) -> std::result::Result<(String, u16), String> {
     let default_port = 25565;
     let (host_part, port_str) = if address.starts_with('[') {
         // IPv6 Address like [::1] or [::1]:25566

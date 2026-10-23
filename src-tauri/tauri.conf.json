@@ -224,6 +224,14 @@
           "ipc:",
           "http://ipc.localhost"
         ],
+        "script-src": [
+          "'self'",
+          "blob:"
+        ],
+        "worker-src": [
+          "'self'",
+          "blob:"
+        ],
         "connect-src": [
           "'self'",
           "asset:",

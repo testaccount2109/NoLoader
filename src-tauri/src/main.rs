@@ -592,6 +592,15 @@ async fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            noriskclient_launcher_v3_lib::noloader::noloader_list_mods,
+            noriskclient_launcher_v3_lib::noloader::noloader_set_mod_enabled,
+            noriskclient_launcher_v3_lib::noloader::noloader_set_safe_mode,
+            noriskclient_launcher_v3_lib::noloader::noloader_read_mod_assets,
+            noriskclient_launcher_v3_lib::noloader::noloader_get_last_played_server,
+            noriskclient_launcher_v3_lib::noloader::noloader_record_last_played_server,
+            noriskclient_launcher_v3_lib::noloader::noloader_get_mod_storage,
+            noriskclient_launcher_v3_lib::noloader::noloader_set_mod_storage,
+            noriskclient_launcher_v3_lib::noloader::noloader_delete_mod_storage,
             utils::mod_cache_cleanup::debug_list_expected_cache_filenames,
             utils::mod_cache_cleanup::clean_mod_cache_command,
             list_system_fonts,

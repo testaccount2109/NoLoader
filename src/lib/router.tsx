@@ -13,6 +13,10 @@ import { ProfileDetailViewV2Wrapper } from "../components/profiles/ProfileDetail
 // import { AdventCalendarTab } from "../components/advent-calendar/AdventCalendarTab";
 import { ModDetailPage } from "../components/mods/ModDetailPage";
 import { SyncPacksPage } from "../components/sync-packs/SyncPacksPage";
+import {
+  NoLoaderExtensionPage,
+  NoLoaderManagerPage,
+} from "../noloader/NoLoaderPages";
 
 export const router = createHashRouter([
   {
@@ -59,6 +63,14 @@ export const router = createHashRouter([
       {
         path: "mods/:source/:projectId",
         element: <ModDetailPage />,
+      },
+      {
+        path: "noloader",
+        element: <NoLoaderManagerPage />,
+      },
+      {
+        path: "noloader/:modId/:pageId",
+        element: <NoLoaderExtensionPage />,
       },
       {
         path: "skins",

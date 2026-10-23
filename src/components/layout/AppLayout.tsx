@@ -86,6 +86,7 @@ export function AppLayout({
     { id: "play", icon: "solar:play-bold", label: t("nav.play") },
     { id: "profiles", icon: "solar:user-id-bold", label: t("nav.profiles") },
     { id: "mods", icon: "solar:widget-bold", label: t("nav.mods") },
+    { id: "noloader", icon: "solar:code-bold", label: "NoLoader" },
     { id: "skins", icon: "solar:emoji-funny-circle-bold", label: t("nav.skins") },
     { id: "capes", icon: "solar:shop-bold", label: t("nav.capes") },
     ...(clipsEnabled

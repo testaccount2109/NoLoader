@@ -12,6 +12,7 @@ export const HOOK_FILES = ["graphics-hook64.dll", "graphics-hook32.dll"];
 
 export const LEGAL_FILES = [
   { dir: "graphics-hook", name: "NOTICE.txt", as: "graphics-hook-NOTICE.txt" },
+  { dir: "graphics-hook", name: "LICENSE.txt", as: "graphics-hook-GPL-2.0.txt" },
   { dir: "ffmpeg", name: "NOTICE.txt", as: "ffmpeg-NOTICE.txt" },
   { dir: "ffmpeg", name: "LICENSE.txt", as: "ffmpeg-LICENSE.txt" },
 ];

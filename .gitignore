@@ -35,4 +35,14 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .idea
 examples
+.playwright-cli/
 /src-tauri/gen
+/.tools/
+
+# .NET build products
+**/bin/
+**/obj/
+**/TestResults/
+
+# Local release artifacts and UI harness output
+/output/
