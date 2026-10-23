@@ -1,0 +1,186 @@
+name: NoLoader Windows Release
+
+on:
+  push:
+    tags: ["noloader-v*"]
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: startsWith(github.ref, 'refs/tags/noloader-v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      NOLOADER_RELEASE_SIGNING_PRIVATE_KEY_PEM: ${{ secrets.NOLOADER_RELEASE_SIGNING_PRIVATE_KEY_PEM }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.402
+      - name: Resolve release and upstream versions
+        id: release
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^noloader-v', ''
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') {
+            throw "Tag '$env:GITHUB_REF_NAME' does not contain a valid SemVer release."
+          }
+          git fetch origin refs/heads/v3:refs/remotes/origin/v3
+          $upstreamCommit = git merge-base HEAD origin/v3
+          if ($LASTEXITCODE -ne 0 -or $upstreamCommit -notmatch '^[0-9a-f]{40}$') {
+            throw "Could not identify the NoRisk upstream base commit."
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+          "upstream_commit=$upstreamCommit" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+      - name: Install frontend dependencies
+        run: yarn install --frozen-lockfile
+      - name: Collect frontend dependency notices
+        shell: pwsh
+        run: yarn licenses generate-disclaimer | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'THIRD-PARTY-LICENSES.txt') -Encoding utf8NoBOM
+      - name: Build prepared NoLoader launcher
+        run: yarn tauri build --no-bundle
+      - name: Package prepared launcher and required notices
+        id: archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.release.outputs.version }}'
+          $stage = Join-Path $env:RUNNER_TEMP "NoLoader-$version"
+          $archiveName = "NoLoader-Windows-x64-$version.zip"
+          $archivePath = Join-Path $env:RUNNER_TEMP $archiveName
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          $releaseDirectory = Join-Path $env:GITHUB_WORKSPACE 'src-tauri\target\release'
+          $requiredFiles = @(
+            'noriskclient-launcher-v3.exe',
+            'norisk-capture-x86_64-pc-windows-msvc.exe',
+            'avcodec-62.dll',
+            'avformat-62.dll',
+            'avutil-60.dll',
+            'swresample-6.dll',
+            'graphics-hook64.dll',
+            'graphics-hook32.dll',
+            'ffmpeg-LICENSE.txt',
+            'ffmpeg-NOTICE.txt',
+            'graphics-hook-NOTICE.txt',
+            'graphics-hook-GPL-2.0.txt'
+          )
+          foreach ($name in $requiredFiles) {
+            $sourceDirectory = if ($name -eq 'noriskclient-launcher-v3.exe') {
+              $releaseDirectory
+            } else {
+              Join-Path $env:GITHUB_WORKSPACE 'src-tauri\binaries'
+            }
+            $source = Join-Path $sourceDirectory $name
+            if (!(Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required launcher file is missing: $name" }
+            $destinationDirectory = if ($name -in @('ffmpeg-LICENSE.txt', 'ffmpeg-NOTICE.txt', 'graphics-hook-NOTICE.txt', 'graphics-hook-GPL-2.0.txt')) {
+              Join-Path $stage 'licenses'
+            } else {
+              $stage
+            }
+            New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+            Copy-Item -LiteralPath $source -Destination (Join-Path $destinationDirectory $name)
+          }
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'LICENSE') -Destination (Join-Path $stage 'LICENSE')
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'NOLOADER-BUILD-NOTICE.txt') -Destination (Join-Path $stage 'NOLOADER-BUILD-NOTICE.txt')
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'THIRD-PARTY-LICENSES.txt') -Destination (Join-Path $stage 'THIRD-PARTY-LICENSES.txt')
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archivePath -CompressionLevel Optimal -Force
+          "archive_name=$archiveName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+          "archive_path=$archivePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8NoBOM
+      - name: Sign release catalog
+        shell: pwsh
+        env:
+          NOLOADER_RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          NOLOADER_UPSTREAM_COMMIT: ${{ steps.release.outputs.upstream_commit }}
+          NOLOADER_RELEASE_ARCHIVE_PATH: ${{ steps.archive.outputs.archive_path }}
+          NOLOADER_RELEASE_CATALOG_OUTPUT: ${{ runner.temp }}/NoLoader-Catalog.json
+        run: node scripts/create-noloader-catalog.mjs
+      - name: Build self-contained plain installer
+        shell: pwsh
+        env:
+          NOLOADER_RELEASE_CATALOG_URL: https://raw.githubusercontent.com/${{ github.repository }}/noloader-catalog/catalog.json
+        run: |
+          $env:NOLOADER_RELEASE_PUBLIC_KEY_PEM = Get-Content apps\installer\release-public-key.pem -Raw
+          dotnet publish apps\installer\NoLoader.Installer\NoLoader.Installer.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:NoLoaderDistributionBuild=true
+          $source = Join-Path $env:GITHUB_WORKSPACE 'apps\installer\NoLoader.Installer\bin\Release\net10.0-windows\win-x64\publish\NoLoader.exe'
+          if (!(Test-Path -LiteralPath $source -PathType Leaf)) { throw 'The self-contained NoLoader installer was not published.' }
+          Copy-Item -LiteralPath $source -Destination (Join-Path $env:RUNNER_TEMP 'NoLoader-Setup-Windows-x64.exe') -Force
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: NoLoader Launcher ${{ steps.release.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(steps.release.outputs.version, '-beta') }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.archive.outputs.archive_path }}
+            ${{ runner.temp }}/NoLoader-Setup-Windows-x64.exe
+            ${{ runner.temp }}/NoLoader-Catalog.json
+      - name: Publish the current signed catalog to the stable raw URL
+        shell: pwsh
+        run: |
+          $catalogPath = Join-Path $env:RUNNER_TEMP 'NoLoader-Catalog.json'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin refs/heads/noloader-catalog:refs/remotes/origin/noloader-catalog 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            git checkout -B noloader-catalog origin/noloader-catalog
+          } else {
+            git checkout --orphan noloader-catalog
+            git rm -r --cached --ignore-unmatch .
+          }
+          Copy-Item -LiteralPath $catalogPath -Destination (Join-Path $env:GITHUB_WORKSPACE 'catalog.json') -Force
+          git add -- catalog.json
+          git commit -m "Publish signed NoLoader catalog for ${{ steps.release.outputs.version }}"
+          git push origin noloader-catalog
+
+  renew-catalog:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    env:
+      NOLOADER_RELEASE_SIGNING_PRIVATE_KEY_PEM: ${{ secrets.NOLOADER_RELEASE_SIGNING_PRIVATE_KEY_PEM }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: source
+      - uses: actions/checkout@v4
+        with:
+          ref: noloader-catalog
+          path: catalog
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Renew catalog validity and signature
+        run: node source/scripts/renew-noloader-catalog.mjs catalog/catalog.json source/apps/installer/release-public-key.pem
+      - name: Publish renewed catalog
+        working-directory: catalog
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- catalog.json
+          if git diff --cached --quiet; then
+            echo "Catalog is already current."
+          else
+            git commit -m "Renew signed NoLoader catalog"
+            git push origin noloader-catalog
+          fi

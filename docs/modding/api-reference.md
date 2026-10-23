@@ -1,0 +1,67 @@
+# NoLoader frontend API, version 1
+
+An entry point exports `activate(api)`. No global launcher object is exposed. API calls use a private `MessagePort`, are validated by the host, and are available only to the extension module in its worker. Direct messages sent through the worker global are ignored.
+
+## `api.registerPage(page)`
+
+Requires the `ui.pages` permission. `page` has `{ id, title, content }`. IDs use lowercase letters, digits, `_`, or `-`; titles are at most 80 characters. Content is a bounded tree of the component types documented below. The returned function unregisters the page and navigation items that point to it.
+
+## `api.updatePage(pageId, page)`
+
+Requires `ui.pages`. The page must already be registered by this mod. The descriptor's `id` must match `pageId`; the entire descriptor is validated before it replaces the current page.
+
+## `api.registerNavigationItem(item)`
+
+Requires `ui.navigation`. `item` has `{ id, label, pageId, icon? }`. The page must already be registered by the same mod. The only supported icons are `puzzle`, `sparkles`, and `info`. The returned function removes the item.
+
+## `api.registerHomeWidget(widget)` and `api.updateHomeWidget(widgetId, widget)`
+
+Require `ui.home`. Widgets use the same validated `{ id, title, content }` structure as a page and render in the Play screen above the normal launcher controls. A mod may register up to 8 widgets. Updates must keep the registered ID; the returned function removes the widget.
+
+## `api.theme.registerGlobalStyles(styles)` and `api.theme.updateGlobalStyles(styles)`
+
+Require `ui.globalStyles`. This adds a stylesheet to the launcher document, so a mod can restyle existing screens and layout selectors across the whole launcher. Stylesheets are limited to 96 KiB and reject `@import`, `url()`, `expression()`, `-moz-binding`, and `behavior:`. Treat global styles as a powerful visual override; they are removed automatically when the extension stops, and the returned function removes the stylesheet early.
+
+## `api.onAction(callback)`
+
+Registers the function that receives action IDs from buttons in the mod's pages. It returns a function that removes that handler. A mod with page buttons must register its handler during activation and keep it registered while those buttons are visible. Action IDs use lowercase letters, digits, `_`, or `-`.
+
+Button nodes contain `{ type: "button", id, label, action }`. The `id` identifies the UI node; `action` is passed to the callback.
+
+## Launcher and multiplayer APIs
+
+These calls use the same private request/response channel as the UI API. They are checked against the mod's manifest permissions by the launcher host; extensions cannot call Tauri commands directly. Profile and last-server reads require a direct page-button action, just like a Quick Play launch.
+
+- `api.profiles.list()` requires `launcher.profiles.read` and returns only profile ID, name, game version, loader, last-played time, and whether the profile is the launcher's last-played profile. Profile paths, settings, and account data are not included. It must be called while handling a NoLoader page button action.
+- `api.servers.getLastPlayed()` requires `launcher.lastServer.read` and returns the most recent multiplayer quick-play target as `{ profileId, address, playedAt }`, or `null` if none has been recorded. It must be called while handling a NoLoader page button action.
+- `api.launcher.launchProfile({ profileId, serverAddress? })` requires `launcher.launch`. The profile must exist in the installed launcher configuration. When `serverAddress` is supplied, NoRisk's existing Quick Play path starts Minecraft and requests a direct multiplayer connection. Successful launcher quick-play requests are recorded for the last-server API.
+
+An extension must call `launchProfile` while handling a NoLoader page button action. The host uses a short-lived, single-use gesture token, so a mod cannot start Minecraft during activation or later from a timer. Handle a rejected promise, for example when the account is signed out or the profile cannot start. A server address must be a host, optional port, or IPv6 address; it cannot contain whitespace or control characters.
+
+## Extension storage
+
+`api.storage.get(key)`, `api.storage.set(key, value)`, and `api.storage.delete(key)` require `storage.mod`. Keys are non-empty strings of at most 128 UTF-8 bytes. Values must be JSON-serializable and may be at most 64 KiB; the complete persistent store for one mod is limited to 256 KiB. `get` returns `undefined` for a missing key, and `delete` returns whether a value was removed. Each extension is bound to its manifest ID by the host and cannot select another extension's storage file.
+
+Storage is kept in the launcher's NoLoader app-data directory when a mod is disabled or uninstalled. The API never returns launcher settings, account information, or another mod's data. Treat stored data as untrusted input when reading it back.
+
+## Extension events
+
+`api.events.on(eventName, callback)` requires `events.subscribe`; it returns an unregister function. A listener receives the JSON payload and `{ name, source }` metadata. `api.events.emit(eventName, value)` requires `events.publish` and resolves to the number of running listeners that received the event.
+
+Event names use `<publisher-mod-id>:<event-name>`, for example `org.example.map:waypoint.added`. Publishers may use only their own manifest ID. Event names are case-sensitive, and the part after `:` must match `[a-z0-9][a-z0-9._-]{0,63}`. Payloads are JSON data no larger than 16 KiB. Each mod may subscribe to 32 names and publish 10 events per second. Events are in-memory notifications; they are not persisted or replayed after startup. Errors thrown by a listener fail that listener's extension and trigger normal worker cleanup.
+
+## UI component catalog
+
+- `{ type: "text", text }`
+- `{ type: "heading", level: 1 | 2 | 3, text }`
+- `{ type: "button", id, label, action }`
+- `{ type: "stack", direction: "row" | "column", children }`
+- `{ type: "card", title?, children }`
+
+The host rejects unknown fields, HTML nodes, unsupported component types, trees over 256 nodes, nesting deeper than 8 levels, and text beyond the documented size limits. Mod CSS is mounted inside a Shadow DOM to scope selectors to that extension page. Styles that use `@import`, `url()`, `expression()`, `-moz-binding`, or `behavior:` are rejected.
+
+## Cleanup and limits
+
+`activate(api)` may return a cleanup function. UI registrations, event subscriptions, and `api.onAction` each return an unregister function as well. The host terminates a worker on activation failure, on invalid API messages, when it exceeds 100 API messages per second, or after it stops responding to 5-second health checks for 15 seconds. Entry points are limited to 2 MiB and each API message to 128 KiB. Each mod may register up to 32 pages, 8 home widgets, 32 navigation items, and 32 event subscriptions; NoLoader starts at most 32 extensions simultaneously.
+
+No API for launcher accounts, arbitrary files, arbitrary Tauri commands, or Minecraft-process access is exposed. A worker is a browser-process boundary, not a complete sandbox; see [security status](security.md).

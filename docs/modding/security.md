@@ -1,0 +1,21 @@
+# NoLoader security status
+
+## Implemented boundary
+
+Extension JavaScript is never imported into the launcher's React bundle. Each enabled extension runs as a dynamically imported module in a dedicated Web Worker. The worker has no DOM or main-window `window` object. Extension code receives only the documented NoLoader API; host messages use a private `MessagePort`, while direct messages sent through the worker global are ignored. The main window's Tauri commands and broad filesystem permissions are not passed to the extension module.
+
+The host checks each manifest permission before accepting API calls, validates every page and navigation descriptor, bounds files and messages, limits an extension to 100 API messages per second, and terminates a worker that fails activation, sends invalid messages, or stops responding to health checks. Registration cleanup callbacks are released when invoked. NoLoader starts at most 32 extensions simultaneously and limits each one to 32 registered pages, 32 event subscriptions, and 32 navigation items. Safe mode stops all extension workers while preserving per-mod enabled settings. Invalid settings also prevent startup.
+
+Native commands store mods under the launcher app-data directory. They reject unsafe directory names, symlinked mod folders and entry points, paths that escape the mod directory, oversized files, excess directory counts, and scans whose aggregate manifest data exceeds 16 MiB. Mod storage is isolated by validated manifest ID, limits each value to 64 KiB and each store to 256 KiB, rejects linked data files, and serializes concurrent writes before atomically replacing the file. The frontend compares the manifest read during activation with the manifest discovered during scanning. Settings writes use a unique temporary file and a platform-specific replacement operation; unknown JSON settings survive updates.
+
+Styles declared in a mod manifest are mounted in a Shadow DOM. Mods that explicitly request `ui.globalStyles` can also add CSS to the launcher document to restyle its existing screens; these styles are removed with the worker. Both paths reject common external-resource and executable CSS forms. The component tree is data-only; arbitrary HTML and React component objects are not accepted.
+
+## Residual risk
+
+A Web Worker is a browser-process boundary, not an operating-system sandbox. It does not provide a hard memory or CPU quota, and malicious code may consume resources or make network requests allowed by the launcher WebView's policy. Browser engine vulnerabilities remain in scope. CSS restrictions are defense in depth, not a security boundary. Permission strings govern NoLoader API calls and do not restrict browser capabilities. Users should install extensions only from sources they trust.
+
+No account data, access tokens, cookies, private paths, or native handles are sent to extension workers. The API exposes only limited launcher profile metadata, extension-to-extension events, per-extension JSON storage, and Quick Play launch operations when requested by the extension. Launch requests also require a short-lived, single-use token issued while the user activates a NoLoader page button. It exposes no launcher account, arbitrary filesystem, settings, arbitrary Tauri command, or Minecraft-process API. Native extensions, binary patching, and Minecraft injection are not part of this implementation.
+
+## Verification status
+
+Frontend parser, resolver, UI descriptor, stylesheet, event-name/payload validation, built SDK activation, and worker-bootstrap checks run under `yarn test:noloader`. The browser smoke harness in `output/playwright/worker-harness.html` checks ES module activation, private-port action round trips, and rejection of a forged worker-global lifecycle message. The manager harness exercises realistic list and safe-mode states and renders the built example's page and action using clearly labeled fake native data. Rust tests cover path validation, settings decoding, and mod-storage size/isolation logic. A Windows native release build has succeeded, but the new mod-storage commands still require an app-runtime test before their behavior is considered fully validated. This document records an implementation review, not an external security audit.
