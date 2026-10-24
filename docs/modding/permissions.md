@@ -16,10 +16,11 @@ NoLoader extensions declare the capabilities they need in `noloader.mod.json`. M
 | `launcher.notifications` | `notifications.show` |
 | `launcher.openExternal` | `launcher.openExternal` |
 | `launcher.windows` | `windows.openPage`, `windows.close` |
+| `launcher.clientRuntime` | `client.execute` |
 | `system.clipboard` | `clipboard.readText`, `clipboard.writeText` |
 | `system.dialog` | `dialogs.openFile`, `openDirectory`, `saveFile`, `confirm` |
 | `system.files` | `system.files.*` |
-| `system.process` | `system.process.run`, `system.process.open` |
+| `system.process` | `system.process.run`, `spawn`, `open` |
 | `network.http` | `network.request` |
 | `storage.mod` | `storage.get`, `storage.set`, `storage.delete` |
 | `events.publish` | `events.emit` |
@@ -27,11 +28,13 @@ NoLoader extensions declare the capabilities they need in `noloader.mod.json`. M
 
 ## PC access
 
-`system.files` allows an extension to read, write, list, create, remove, copy, and move files and directories using absolute paths. `system.process` can run an executable with arguments and open a path with the operating system. A process is stopped after 60 seconds and captured output is limited to 1 MiB per stream. These capabilities can affect any data and applications available to the current Windows user. Grant them only to extensions whose authors and source you trust.
+`system.files` allows an extension to read, write, list, create, remove, copy, and move files and directories using absolute paths. `system.process.run` runs an executable with arguments and returns bounded output; `spawn` starts a detached process without a time limit; `open` opens a path with the operating system. These capabilities can affect any data and applications available to the current Windows user. Grant them only to extensions whose authors and source you trust.
 
 The extension host applies manifest checks before forwarding these calls. The worker is not an operating-system security boundary: an extension with process access can run tools with the user's privileges. NoLoader does not ask Windows to elevate those privileges.
 
 `launcher.windows` opens standalone windows only for pages registered by the same extension. `launcher.openExternal` opens HTTP, HTTPS, or mail links and requires a direct user action. Notifications and clipboard calls are mediated by the host.
+
+`launcher.clientRuntime` is the highest-trust client capability. It lets an extension execute a bundled JavaScript module in NoRisk Client's main webview or one of its own standalone extension windows. That module can directly access the DOM and the running client renderer, replacing or extending any client UI. Treat it as full client code execution: it can break the interface, inspect rendered information, and invoke capabilities available to the webview. Grant it only to code you have audited and trust completely.
 
 `system.dialog` opens native file/folder pickers and confirmation dialogs. These calls require a direct extension UI action, so a page or button must be active when they are requested.
 

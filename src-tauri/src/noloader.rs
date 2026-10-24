@@ -90,6 +90,59 @@ pub struct ModProcessResult {
 }
 
 #[tauri::command]
+pub fn noloader_execute_client_code(
+    app: AppHandle,
+    mod_id: String,
+    source: String,
+) -> Result<(), String> {
+    if source.is_empty() || source.len() > 8 * 1024 * 1024 {
+        return Err("Client module must contain 1 byte to 8 MiB of source.".to_string());
+    }
+    if !is_valid_mod_id(&mod_id) {
+        return Err("Extension ID is invalid.".to_string());
+    }
+    let snapshot = noloader_list_mods(app.clone())?;
+    let installed = snapshot.entries.iter().find(|entry| {
+        entry.enabled
+            && entry.manifest_json.as_ref().is_some_and(|manifest| {
+                serde_json::from_str::<Value>(manifest)
+                    .ok()
+                    .and_then(|value| value.get("id").and_then(Value::as_str).map(str::to_owned))
+                    .as_deref()
+                    == Some(mod_id.as_str())
+            })
+    });
+    let Some(installed) = installed else {
+        return Err("Extension is not enabled in NoLoader.".to_string());
+    };
+    let manifest: Value =
+        serde_json::from_str(installed.manifest_json.as_deref().unwrap_or_default())
+            .map_err(|error| format!("Could not read extension manifest: {error}"))?;
+    let has_permission = manifest
+        .get("permissions")
+        .and_then(Value::as_array)
+        .is_some_and(|permissions| {
+            permissions
+                .iter()
+                .any(|permission| permission.as_str() == Some("launcher.clientRuntime"))
+        });
+    if !has_permission {
+        return Err("Extension manifest does not grant launcher.clientRuntime.".to_string());
+    }
+    let webview = app
+        .get_webview_window("main")
+        .ok_or_else(|| "The NoRisk Client main webview is not open.".to_string())?;
+    let encoded = serde_json::to_string(&source)
+        .map_err(|error| format!("Could not encode client module: {error}"))?;
+    let script = format!(
+        "(() => {{ const source = {encoded}; const run = () => {{ if (!document.querySelector('#root')) {{ setTimeout(run, 40); return; }} const url = URL.createObjectURL(new Blob([source], {{ type: 'text/javascript' }})); import(url).catch(error => console.error('[NoLoader extension module]', error)).finally(() => URL.revokeObjectURL(url)); }}; run(); }})()"
+    );
+    webview
+        .eval(&script)
+        .map_err(|error| format!("Could not execute client module: {error}"))
+}
+
+#[tauri::command]
 pub async fn noloader_process_run(request: ModProcessRequest) -> Result<ModProcessResult, String> {
     use tokio::process::Command;
     if request.program.trim().is_empty()
@@ -124,6 +177,38 @@ pub async fn noloader_process_run(request: ModProcessRequest) -> Result<ModProce
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     })
+}
+
+#[tauri::command]
+pub async fn noloader_process_spawn(request: ModProcessRequest) -> Result<Option<u32>, String> {
+    use std::process::Stdio;
+    use tokio::process::Command;
+    if request.program.trim().is_empty()
+        || request.program.len() > 4096
+        || request.args.len() > 128
+        || request.args.iter().any(|arg| arg.len() > 16 * 1024)
+        || request.env.len() > 64
+        || request
+            .env
+            .iter()
+            .any(|(key, value)| key.len() > 256 || value.len() > 16 * 1024)
+    {
+        return Err("Process request exceeds supported limits.".to_string());
+    }
+    let mut command = Command::new(&request.program);
+    command
+        .args(&request.args)
+        .envs(&request.env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if let Some(cwd) = request.cwd {
+        command.current_dir(cwd);
+    }
+    let child = command
+        .spawn()
+        .map_err(|error| format!("Could not start process: {error}"))?;
+    Ok(child.id())
 }
 
 #[tauri::command]

@@ -4,7 +4,7 @@
 
 NoLoader is an unofficial community build based on NoRisk Launcher. It is not affiliated with or endorsed by NoRisk Client. The upstream name and marks identify the software this build extends; their owners retain those rights.
 
-This branch integrates NoLoader into NoRisk Client as an extension framework. Extensions can add launcher pages, navigation, widgets, global styles, standalone windows, storage, inter-extension events, HTTPS integrations, clipboard and notification features, and explicitly permissioned PC file/process access. NoLoader extensions do not create or install Minecraft mods. The worker API and examples are in `sdk/`.
+This branch integrates NoLoader into NoRisk Client as an extension framework. Extensions can add launcher pages, navigation, widgets, global styles, standalone windows, storage, inter-extension events, HTTPS integrations, clipboard and notification features, and explicitly permissioned PC file/process access. API 5 also lets a trusted extension execute its own JavaScript modules in the running NoRisk Client renderer for unrestricted client UI and runtime changes. NoLoader extensions do not create or install Minecraft mods. The worker API and examples are in `sdk/`.
 
 NoRisk Client extensions run in dedicated workers and use the permission-checked framework documented in the [getting started guide](docs/modding/getting-started.md), [API reference](docs/modding/api-reference.md), [security status](docs/modding/security.md), and [development guide](docs/development.md). The framework extends NoRisk Client and its desktop integration; it does not install or author Minecraft mods.
 

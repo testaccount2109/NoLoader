@@ -126,7 +126,8 @@ const api = Object.freeze({
     saveFile(options) { return requestApi("dialogs.saveFile", options); },
     confirm(title, message) { return requestApi("dialogs.confirm", { title, message }); },
   }),
-  windows: Object.freeze({ openPage(options) { return requestApi("windows.openPage", options); }, close(id) { return requestApi("windows.close", { id }); } }),
+  windows: Object.freeze({ openPage(options) { return requestApi("windows.openPage", options); }, open(options) { return requestApi("windows.open", options); }, close(id) { return requestApi("windows.close", { id }); } }),
+  client: Object.freeze({ execute(source, windowId) { return requestApi("client.execute", { source, windowId }); } }),
   system: Object.freeze({
     files: Object.freeze({
       readText(path) { return requestApi("files.readText", { path }); }, writeText(path, content) { return requestApi("files.writeText", { path, content }); },
@@ -135,7 +136,7 @@ const api = Object.freeze({
       remove(path, recursive) { return requestApi("files.remove", { path, recursive }); }, copy(source, destination) { return requestApi("files.copy", { source, destination }); },
       move(source, destination) { return requestApi("files.move", { source, destination }); }, exists(path) { return requestApi("files.exists", { path }); },
     }),
-    process: Object.freeze({ run(request) { return requestApi("process.run", request); }, open(path) { return requestApi("process.open", { path }); } }),
+    process: Object.freeze({ run(request) { return requestApi("process.run", request); }, spawn(request) { return requestApi("process.spawn", request); }, open(path) { return requestApi("process.open", { path }); } }),
   }),
   updates: Object.freeze({
     check() { return requestApi("updates.check"); },

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -90,6 +90,7 @@ const permissionLabels: Record<
   "system.files": { label: "Access files on this PC", description: "Read, create, modify, move, copy, and delete files using absolute paths." },
   "system.process": { label: "Open files and applications", description: "Open files or folders with the operating system." },
   "launcher.windows": { label: "Open standalone windows", description: "Show this extension's registered pages in separate windows." },
+  "launcher.clientRuntime": { label: "Run code in NoRisk Client", description: "Execute extension ES modules in the full client webview, including direct document and launcher runtime access." },
 };
 
 const statePresentation: Record<
@@ -642,6 +643,25 @@ export function NoLoaderDetachedWindowPage() {
   const registered = pages.find((entry) => entry.modId === modId && entry.page.id === pageId);
   if (!registered || !mod?.manifest) return <div className="flex h-screen items-center justify-center bg-[#090d13] p-8 text-white/70">This extension page is unavailable.</div>;
   return <div className="h-screen overflow-auto bg-[#090d13] p-6 text-white"><header className="mb-5 flex items-center justify-between border-b border-white/10 pb-3"><div><div className="text-xs text-white/40">{mod.manifest.name}</div><h1 className="text-lg font-semibold">{registered.page.title}</h1></div><button className="rounded border border-white/15 px-3 py-1 text-sm" onClick={() => void getCurrentWindow().close()}>Close</button></header><ModUiTree page={registered.page} styles={registered.styles} onAction={(action, value) => sendAction(modId, action, value)} /></div>;
+}
+
+export function NoLoaderBlankWindowPage() {
+  const { modId = "", windowId = "" } = useParams();
+  useEffect(() => {
+    const key = `noloader:runtime:${modId}:${windowId}`;
+    const execute = () => {
+      const source = localStorage.getItem(key);
+      if (!source) return;
+      localStorage.removeItem(key);
+      const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+      void import(/* @vite-ignore */ url).catch((error) => console.error("[NoLoader extension module]", error)).finally(() => URL.revokeObjectURL(url));
+    };
+    const onStorage = (event: StorageEvent) => { if (event.key === key) execute(); };
+    window.addEventListener("storage", onStorage);
+    execute();
+    return () => window.removeEventListener("storage", onStorage);
+  }, [modId, windowId]);
+  return <main id="noloader-extension-root" data-extension={modId} data-window={windowId} className="h-screen overflow-auto bg-[#090d13] text-white" />;
 }
 
 function MetricCard({

@@ -4,7 +4,8 @@
   "workspaces": [
     "sdk/hello-mod",
     "sdk/quick-join-mod",
-    "sdk/performance-mod"
+    "sdk/performance-mod",
+    "sdk/client-runtime-extension"
   ],
   "version": "0.1.0",
   "type": "module",
@@ -17,6 +18,7 @@
     "sdk:hello-mod:build": "yarn workspace @noloader/hello-mod build",
     "sdk:quick-join-mod:build": "yarn workspace @noloader/quick-join-mod build",
     "sdk:performance-mod:build": "yarn workspace @noloader/performance-mod build",
+    "sdk:client-runtime-extension:build": "yarn workspace @noloader/client-runtime-extension build",
     "preview": "vite preview",
     "tauri": "tauri",
     "icons": "node scripts/generate-icon-bundle.mjs",

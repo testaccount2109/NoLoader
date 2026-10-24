@@ -16,6 +16,8 @@ yarn sdk:performance-mod:build
 
 The `sdk/quick-join-mod` sample demonstrates a launcher page, profile metadata, stored settings, and launching a profile into the last Quick Play server. The performance sample demonstrates feature controls and metrics.
 
+The `sdk/client-runtime-extension` sample demonstrates direct client JavaScript execution, a custom standalone window, native file selection, file writing, and process execution. It requests full-trust permissions and should be read carefully before enabling.
+
 ## Create an extension
 
 Copy an SDK example and edit `noloader.mod.json`. Each mod contains its manifest, bundled JavaScript entrypoint, and optional styles. The entrypoint exports `activate(api)` and may return a cleanup callback. Build the frontend as a self-contained ES module; see the SDK's Vite configuration.

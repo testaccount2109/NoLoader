@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "org.noloader.clientruntimeexample",
+  "name": "Client Runtime Example",
+  "version": "1.0.0",
+  "description": "Demonstrates standalone windows and direct NoRisk Client UI code.",
+  "apiVersion": 5,
+  "launcherVersions": ["0.6.30-noloader.4"],
+  "entrypoints": { "frontend": "dist/index.js" },
+  "dependencies": [],
+  "optionalDependencies": [],
+  "conflicts": [],
+  "permissions": [
+    "ui.pages",
+    "ui.navigation",
+    "launcher.windows",
+    "launcher.clientRuntime",
+    "system.files",
+    "system.process",
+    "system.dialog"
+  ]
+}

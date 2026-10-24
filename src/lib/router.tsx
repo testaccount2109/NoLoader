@@ -17,10 +17,12 @@ import {
   NoLoaderExtensionPage,
   NoLoaderManagerPage,
   NoLoaderDetachedWindowPage,
+  NoLoaderBlankWindowPage,
 } from "../noloader/NoLoaderPages";
 
 export const router = createHashRouter([
   { path: "/noloader-window/:modId/:pageId", element: <NoLoaderDetachedWindowPage /> },
+  { path: "/noloader-blank/:modId/:windowId", element: <NoLoaderBlankWindowPage /> },
   {
     path: "/",
     element: <App />,

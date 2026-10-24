@@ -8,7 +8,18 @@ Request `ui.pages` to call `api.registerPage({ id, title, content })` and `api.u
 
 Request `ui.globalStyles` to use `api.theme.registerGlobalStyles(css)` or `updateGlobalStyles(css)`. Global CSS can affect the launcher's appearance across screens. Styles are validated and removed when the extension stops. Pages use a validated component catalog (text, heading, button, toggle, input, select, progress, stack, card); arbitrary React nodes are not accepted.
 
-`api.windows.openPage({ id, title, pageId, width?, height? })` requires `launcher.windows` and opens a registered page in its own desktop window. `api.windows.close(id)` closes that extension's window. A page can also be reached in the launcher through its navigation item.
+`api.windows.openPage({ id, title, pageId, width?, height? })` requires `launcher.windows` and opens a registered page in its own desktop window. `api.windows.open({ id, title, width?, height? })` opens a blank extension-owned webview outside the main launcher UI; `api.windows.close(id)` closes that extension's window.
+
+`api.client.execute(source, windowId?)` requires `launcher.clientRuntime`. It schedules a self-contained JavaScript ES module (up to 8 MiB) in the main NoRisk Client webview, or in an extension-owned standalone window when `windowId` is supplied. This code runs in the real client renderer with direct DOM access and full webview context; it can replace any launcher UI or modify client runtime behavior. Bundle all module dependencies into `source`. This capability intentionally removes the UI descriptor restrictions and is equivalent to trusting native client code. Errors are reported to the target webview console.
+
+```ts
+const windowId = await api.windows.open({ id: "dashboard", title: "My dashboard" });
+await api.client.execute(`
+  const root = document.querySelector("#noloader-extension-root");
+  root.innerHTML = "<h1>Custom dashboard</h1><button id='refresh'>Refresh</button>";
+  root.querySelector("#refresh").addEventListener("click", () => location.reload());
+`, windowId);
+```
 
 ## Launcher data and controls
 
@@ -55,10 +66,11 @@ const result = await api.system.process.run({
   args: ["--version"],
   cwd: "C:/projects/example",
 });
+const serverPid = await api.system.process.spawn({ program: "my-local-server.exe", args: ["--port", "25565"] });
 await api.system.process.open("C:/projects/example");
 ```
 
-The process API captures output, limits each stream to 1 MiB, and terminates after 60 seconds. It does not elevate privileges. With `system.process`, an extension can run any executable available to the user, so only enable it for code you trust. See [permissions](permissions.md) and [security status](security.md).
+`run` captures output, limits each stream to 1 MiB, and terminates after 60 seconds. `spawn` starts a detached long-running process and returns its process ID without capturing output. Neither method elevates privileges. With `system.process`, an extension can run any executable available to the user, so only enable it for code you trust. See [permissions](permissions.md) and [security status](security.md).
 
 ## Network, updates, storage, and events
 

@@ -1,6 +1,6 @@
 export const MANIFEST_SCHEMA_VERSION = 1;
-export const NOLOADER_API_VERSION = 4;
-export const SUPPORTED_NOLOADER_API_VERSIONS = [1, 2, 3, 4] as const;
+export const NOLOADER_API_VERSION = 5;
+export const SUPPORTED_NOLOADER_API_VERSIONS = [1, 2, 3, 4, 5] as const;
 export const MOD_MANIFEST_FILE = "noloader.mod.json";
 export const MAX_MANIFEST_BYTES = 256 * 1024;
 
@@ -25,6 +25,7 @@ export const PERMISSION_IDS = [
   "system.files",
   "system.process",
   "launcher.windows",
+  "launcher.clientRuntime",
 ] as const;
 
 export type PermissionId = (typeof PERMISSION_IDS)[number];

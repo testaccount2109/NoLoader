@@ -27,6 +27,8 @@ jobs:
         run: yarn tsc --noEmit
       - name: Build and check NoLoader SDK example
         run: yarn test:noloader
+      - name: Build full client runtime SDK example
+        run: yarn sdk:client-runtime-extension:build
       - name: Build frontend
         run: yarn build
 

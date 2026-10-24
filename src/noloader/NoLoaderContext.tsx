@@ -734,11 +734,38 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
             const labels = extensionWindows.current.get(modId) ?? new Set<string>(); labels.add(label); extensionWindows.current.set(modId, labels);
             respond(true, label); return;
           }
+          case "windows.open": {
+            requirePermission("launcher.windows");
+            const p = message.payload as { id?: unknown; title?: unknown; width?: unknown; height?: unknown };
+            if (!p || typeof p.id !== "string" || !/^[a-zA-Z0-9_-]{1,48}$/.test(p.id) || typeof p.title !== "string" || !p.title.trim() || p.title.length > 100) throw new Error("Standalone window options are invalid.");
+            const label = `noloader_${modId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${p.id}`;
+            const existing = await WebviewWindow.getByLabel(label);
+            if (existing) { await existing.setFocus(); respond(true, p.id); return; }
+            const url = new URL(window.location.href); url.hash = `#/noloader-blank/${encodeURIComponent(modId)}/${encodeURIComponent(p.id)}`;
+            const child = new WebviewWindow(label, { url: url.toString(), title: p.title, width: clampDimension(p.width, 900, 480), height: clampDimension(p.height, 640, 320), resizable: true, focus: true });
+            child.once("tauri://error", (event) => console.error("NoLoader standalone window error", event));
+            const labels = extensionWindows.current.get(modId) ?? new Set<string>(); labels.add(label); extensionWindows.current.set(modId, labels);
+            respond(true, p.id); return;
+          }
           case "windows.close": {
             requirePermission("launcher.windows"); const id = (message.payload as { id?: unknown } | undefined)?.id;
             if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,48}$/.test(id)) throw new Error("Window ID is invalid.");
             const child = await WebviewWindow.getByLabel(`noloader_${modId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${id}`);
             if (child) await child.close(); extensionWindows.current.get(modId)?.delete(`noloader_${modId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${id}`); respond(true); return;
+          }
+          case "client.execute": {
+            requirePermission("launcher.clientRuntime");
+            const p = message.payload as { source?: unknown; windowId?: unknown };
+            if (!p || typeof p.source !== "string" || !p.source.trim() || p.source.length > 8 * 1024 * 1024) throw new Error("Client module source must be between 1 byte and 8 MiB.");
+            if (p.windowId !== undefined) {
+              if (typeof p.windowId !== "string" || !/^[a-zA-Z0-9_-]{1,48}$/.test(p.windowId)) throw new Error("Extension window ID is invalid.");
+              const windowLabel = `noloader_${modId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${p.windowId}`;
+              if (!extensionWindows.current.get(modId)?.has(windowLabel)) throw new Error("The requested extension window has not been opened by this extension.");
+              localStorage.setItem(`noloader:runtime:${modId}:${p.windowId}`, p.source);
+              respond(true); return;
+            }
+            await invoke("noloader_execute_client_code", { modId, source: p.source });
+            respond(true); return;
           }
           case "files.readText": case "files.writeText": case "files.readBinary": case "files.writeBinary": case "files.listDirectory": case "files.createDirectory": case "files.remove": case "files.copy": case "files.move": case "files.exists": {
             requirePermission("system.files"); const p = message.payload as Record<string, unknown>;
@@ -769,6 +796,15 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
             if (!env || typeof env !== "object" || Array.isArray(env) || Object.entries(env).some(([k,v]) => typeof v !== "string" || k.length > 256 || v.length > 16384)) throw new Error("Process environment must be a string map.");
             const result = await invoke("noloader_process_run", { request: { program: p.program, args: p.args ?? [], cwd: p.cwd, env } });
             respond(true, result); return;
+          }
+          case "process.spawn": {
+            requirePermission("system.process");
+            const p = message.payload as { program?: unknown; args?: unknown; cwd?: unknown; env?: unknown };
+            if (!p || typeof p.program !== "string" || p.program.length > 4096 || (p.args !== undefined && (!Array.isArray(p.args) || p.args.some(arg => typeof arg !== "string")))) throw new Error("Process request is invalid.");
+            const env = p.env === undefined ? {} : p.env;
+            if (!env || typeof env !== "object" || Array.isArray(env) || Object.entries(env).some(([key,value]) => typeof value !== "string" || key.length > 256 || value.length > 16384)) throw new Error("Process environment must be a string map.");
+            const pid = await invoke<number | null>("noloader_process_spawn", { request: { program: p.program, args: p.args ?? [], cwd: p.cwd, env } });
+            respond(true, pid); return;
           }
           case "performance.getSnapshot": {
             requirePermission("launcher.performance.read");
@@ -956,10 +992,15 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
         );
         return;
       }
-      if (serialized.length > 128 * 1024) {
+      const operation = message.type === "api-request" && typeof message.operation === "string" ? message.operation : "";
+      const isLargeTransfer = operation === "client.execute" || operation.startsWith("files.");
+      const messageLimit = isLargeTransfer ? 12 * 1024 * 1024 : 128 * 1024;
+      if (serialized.length > messageLimit) {
         failWorkerRef.current(
           modId,
-          "Worker API messages are limited to 128 KiB.",
+          isLargeTransfer
+            ? "Large file and client module API messages are limited to 12 MiB."
+            : "Worker API messages are limited to 128 KiB.",
         );
         return;
       }

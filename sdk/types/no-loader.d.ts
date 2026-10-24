@@ -104,6 +104,13 @@ export interface ModWindowOptions {
   height?: number;
 }
 
+export interface ModStandaloneWindowOptions {
+  id: string;
+  title: string;
+  width?: number;
+  height?: number;
+}
+
 export interface ModProcessRequest {
   program: string;
   args?: string[];
@@ -169,7 +176,12 @@ export interface NoLoaderApi {
   };
   windows: {
     openPage(options: ModWindowOptions): Promise<string>;
+    open(options: ModStandaloneWindowOptions): Promise<string>;
     close(id: string): Promise<void>;
+  };
+  client: {
+    /** Executes an ES module in the selected NoRisk Client webview. Requires the full client runtime permission. */
+    execute(source: string, windowId?: string): Promise<void>;
   };
   system: {
     files: {
@@ -186,6 +198,7 @@ export interface NoLoaderApi {
     };
     process: {
       run(request: ModProcessRequest): Promise<ModProcessResult>;
+      spawn(request: ModProcessRequest): Promise<number | null>;
       open(path: string): Promise<void>;
     };
   };

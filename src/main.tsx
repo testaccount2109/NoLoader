@@ -17,6 +17,13 @@ const isOverlay = (() => {
     return false;
   }
 })();
+const isNoLoaderBlankWindow = (() => {
+  try {
+    return getCurrentWindow().label.startsWith("noloader_") && window.location.hash.startsWith("#/noloader-blank/");
+  } catch {
+    return false;
+  }
+})();
 
 if (isOverlay) {
   document.documentElement.classList.add("overlay-window");
@@ -26,7 +33,7 @@ if (isOverlay) {
 
 const render = () => ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <I18nextProvider i18n={i18n}>
-    {isOverlay ? <ClipOverlay /> : <NoLoaderProvider><RouterProvider router={router} /></NoLoaderProvider>}
+    {isOverlay ? <ClipOverlay /> : isNoLoaderBlankWindow ? <RouterProvider router={router} /> : <NoLoaderProvider><RouterProvider router={router} /></NoLoaderProvider>}
   </I18nextProvider>,
 );
 
