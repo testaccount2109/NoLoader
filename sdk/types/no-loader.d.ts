@@ -61,6 +61,28 @@ export interface LastPlayedServer {
   playedAt: string;
 }
 
+export interface ModUpdateCheck {
+  id: string;
+  version: string;
+  available: boolean;
+  downloadUrl?: string;
+  changelogUrl?: string;
+}
+
+export interface ModHttpRequest {
+  url: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export interface ModHttpResponse {
+  status: number;
+  ok: boolean;
+  contentType: string | null;
+  body: string;
+}
+
 export interface LaunchProfileRequest {
   profileId: string;
   serverAddress?: string;
@@ -100,6 +122,12 @@ export interface NoLoaderApi {
   gameMods: {
     importFromPicker(profileId: string): Promise<void>;
     installBundled(profileId: string, jarPath: string): Promise<string>;
+  };
+  updates: {
+    check(): Promise<ModUpdateCheck | null>;
+  };
+  network: {
+    request(request: ModHttpRequest): Promise<ModHttpResponse>;
   };
   features: {
     setEnabled(featureId: ModFeatureId, enabled: boolean): void;

@@ -6,7 +6,7 @@
   "description": "Controls optional launcher features and reports NoLoader extension API activity.",
   "authors": ["NoLoader SDK"],
   "apiVersion": 2,
-  "launcherVersions": ["0.6.29", "0.6.30-noloader.1", "0.6.30-noloader.2", "0.6.30-noloader.3"],
+  "launcherVersions": ["0.6.29", "0.6.30-noloader.1", "0.6.30-noloader.2", "0.6.30-noloader.3", "0.6.30-noloader.4"],
   "entrypoints": {
     "frontend": "dist/index.js"
   },

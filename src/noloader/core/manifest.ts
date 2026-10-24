@@ -1,6 +1,6 @@
 export const MANIFEST_SCHEMA_VERSION = 1;
-export const NOLOADER_API_VERSION = 2;
-export const SUPPORTED_NOLOADER_API_VERSIONS = [1, 2] as const;
+export const NOLOADER_API_VERSION = 3;
+export const SUPPORTED_NOLOADER_API_VERSIONS = [1, 2, 3] as const;
 export const MOD_MANIFEST_FILE = "noloader.mod.json";
 export const MAX_MANIFEST_BYTES = 256 * 1024;
 
@@ -18,6 +18,7 @@ export const PERMISSION_IDS = [
   "storage.mod",
   "events.publish",
   "events.subscribe",
+  "network.http",
 ] as const;
 
 export type PermissionId = (typeof PERMISSION_IDS)[number];
@@ -36,6 +37,7 @@ export interface ModManifest {
   authors: string[];
   license?: string;
   repository?: string;
+  updates?: { manifestUrl: string };
   apiVersion: number;
   launcherVersions: string[];
   entrypoints: {
@@ -77,6 +79,7 @@ const ALLOWED_FIELDS = new Set([
   "authors",
   "license",
   "repository",
+  "updates",
   "apiVersion",
   "launcherVersions",
   "entrypoints",
@@ -159,6 +162,7 @@ export function validateManifest(value: unknown): ManifestResult {
       message: "Repository must be an HTTPS URL.",
     });
   }
+  const updates = readUpdateConfiguration(value, issues);
 
   const apiVersion = readPositiveInteger(value, "apiVersion", issues);
   const launcherVersions = readSemVerArray(
@@ -227,6 +231,7 @@ export function validateManifest(value: unknown): ManifestResult {
       authors: authors ?? [],
       ...(license === undefined ? {} : { license }),
       ...(repository === undefined ? {} : { repository }),
+      ...(updates === undefined ? {} : { updates }),
       apiVersion: apiVersion!,
       launcherVersions: launcherVersions!,
       entrypoints: entrypoints!,
@@ -236,6 +241,28 @@ export function validateManifest(value: unknown): ManifestResult {
       permissions: permissions ?? [],
     },
   };
+}
+
+function readUpdateConfiguration(
+  value: Record<string, unknown>,
+  issues: ManifestIssue[],
+): ModManifest["updates"] {
+  if (value.updates === undefined) return undefined;
+  if (!isRecord(value.updates)) {
+    issues.push({ path: "updates", message: "Expected an update configuration object." });
+    return undefined;
+  }
+  for (const field of Object.keys(value.updates)) {
+    if (field !== "manifestUrl") {
+      issues.push({ path: `updates.${field}`, message: "Unknown update configuration field." });
+    }
+  }
+  const manifestUrl = readString(value.updates, "manifestUrl", issues, "updates.manifestUrl");
+  if (manifestUrl !== undefined && !isHttpsUrl(manifestUrl)) {
+    issues.push({ path: "updates.manifestUrl", message: "Update manifest URL must use HTTPS." });
+    return undefined;
+  }
+  return manifestUrl === undefined ? undefined : { manifestUrl };
 }
 
 export function compareSemVer(left: string, right: string): number {

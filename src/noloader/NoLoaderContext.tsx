@@ -15,6 +15,7 @@ import * as ProfileService from "../services/profile-service";
 import { launch as launchProfile } from "../services/process-service";
 import {
   parseManifestJson,
+  compareSemVer,
   type ModManifest,
   NOLOADER_API_VERSION,
   SUPPORTED_NOLOADER_API_VERSIONS,
@@ -80,6 +81,7 @@ export interface NoLoaderMod {
   enabled: boolean;
   state: ModLifecycleState;
   detail?: string;
+  update?: { state: "checking" | "available" | "current" | "error"; version?: string; downloadUrl?: string; changelogUrl?: string; detail?: string };
 }
 
 export interface RegisteredModPage {
@@ -372,6 +374,51 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
       });
       setMods(initialStates);
 
+      const modsWithUpdateFeeds = discovered.filter((mod) => mod.manifest?.updates);
+      if (modsWithUpdateFeeds.length) {
+        setMods((current) => current.map((mod) =>
+          mod.manifest?.updates ? { ...mod, update: { state: "checking" } } : mod,
+        ));
+        void Promise.all(modsWithUpdateFeeds.map(async (mod): Promise<[string, NonNullable<NoLoaderMod["update"]>]> => {
+          const manifest = mod.manifest!;
+          try {
+            const body = await invoke<string>("noloader_fetch_update_manifest", {
+              url: manifest.updates!.manifestUrl,
+            });
+            const remote = JSON.parse(body) as Record<string, unknown>;
+            if (remote.id !== manifest.id || typeof remote.version !== "string") {
+              throw new Error("Update feed ID or version does not match this mod.");
+            }
+            const comparison = compareSemVer(remote.version, manifest.version);
+            const downloadUrl = typeof remote.downloadUrl === "string" ? remote.downloadUrl : undefined;
+            const changelogUrl = typeof remote.changelogUrl === "string" ? remote.changelogUrl : undefined;
+            for (const candidate of [downloadUrl, changelogUrl]) {
+              if (candidate && new URL(candidate).protocol !== "https:") {
+                throw new Error("Update links must use HTTPS.");
+              }
+            }
+            return [mod.directory, {
+              state: comparison > 0 ? "available" : "current",
+              version: remote.version,
+              ...(downloadUrl ? { downloadUrl } : {}),
+              ...(changelogUrl ? { changelogUrl } : {}),
+            }] as [string, NonNullable<NoLoaderMod["update"]>];
+          } catch (updateError) {
+            return [mod.directory, {
+              state: "error",
+              detail: errorMessage(updateError),
+            }] as [string, NonNullable<NoLoaderMod["update"]>];
+          }
+        })).then((results) => {
+          if (currentGeneration !== generation.current) return;
+          const byDirectory = new Map(results);
+          setMods((current) => current.map((mod) => {
+            const update = byDirectory.get(mod.directory);
+            return update ? { ...mod, update } : mod;
+          }));
+        });
+      }
+
       const loadedIds = new Set<string>();
       for (const resolved of resolution.order) {
         if (currentGeneration !== generation.current) return;
@@ -611,6 +658,71 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
               jarPath,
             });
             respond(true, installedFile);
+            return;
+          }
+          case "updates.check": {
+            const updateFeed = runtime.manifest.updates;
+            if (!updateFeed) {
+              respond(true, null);
+              return;
+            }
+            const body = await invoke<string>("noloader_fetch_update_manifest", {
+              url: updateFeed.manifestUrl,
+            });
+            const remote = JSON.parse(body) as Record<string, unknown>;
+            if (remote.id !== modId || typeof remote.version !== "string") {
+              throw new Error("Update feed ID or version does not match this mod.");
+            }
+            const update = {
+              id: modId,
+              version: remote.version,
+              available: compareSemVer(remote.version, runtime.manifest.version) > 0,
+              ...(typeof remote.downloadUrl === "string" ? { downloadUrl: remote.downloadUrl } : {}),
+              ...(typeof remote.changelogUrl === "string" ? { changelogUrl: remote.changelogUrl } : {}),
+            };
+            for (const link of [update.downloadUrl, update.changelogUrl]) {
+              if (link && new URL(link).protocol !== "https:") {
+                throw new Error("Update links must use HTTPS.");
+              }
+            }
+            respond(true, update);
+            return;
+          }
+          case "network.request": {
+            requirePermission("network.http");
+            const payload = message.payload as Record<string, unknown> | undefined;
+            if (!payload || typeof payload.url !== "string" || payload.url.length > 4096) {
+              throw new Error("Network request needs a valid HTTPS URL.");
+            }
+            const requestUrl = new URL(payload.url);
+            if (requestUrl.protocol !== "https:" || requestUrl.username || requestUrl.password) {
+              throw new Error("Mod network requests require an HTTPS URL without credentials.");
+            }
+            const method = payload.method === undefined ? "GET" : payload.method;
+            if (typeof method !== "string" || !["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method.toUpperCase())) {
+              throw new Error("Only GET, POST, PUT, PATCH, and DELETE are supported.");
+            }
+            const headers = payload.headers ?? {};
+            if (!headers || typeof headers !== "object" || Array.isArray(headers)) {
+              throw new Error("Network request headers must be a string map.");
+            }
+            const normalizedHeaders: Record<string, string> = {};
+            for (const [name, value] of Object.entries(headers)) {
+              if (typeof value !== "string" || value.length > 8192) {
+                throw new Error("Network request headers must contain short string values.");
+              }
+              normalizedHeaders[name] = value;
+            }
+            if (payload.body !== undefined && typeof payload.body !== "string") {
+              throw new Error("Network request body must be a string.");
+            }
+            const response = await invoke("noloader_http_request", {
+              url: requestUrl.toString(),
+              method: method.toUpperCase(),
+              headers: normalizedHeaders,
+              body: payload.body,
+            });
+            respond(true, response);
             return;
           }
           case "performance.getSnapshot": {

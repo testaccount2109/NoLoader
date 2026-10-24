@@ -1,10 +1,10 @@
-# NoLoader frontend API, version 2
+# NoLoader frontend API, version 3
 
 An entry point exports `activate(api)`. No global launcher object is exposed. API calls use a private `MessagePort`, are validated by the host, and are available only to the extension module in its worker. Direct messages sent through the worker global are ignored.
 
 ## Available mod features
 
-Launcher mods can add validated launcher pages, home widgets, navigation links, scoped or global themes, persistent mod-owned settings, and namespaced events for other mods. With explicit manifest permissions they can also read basic profile metadata, open a JAR picker or install a bundled game-mod JAR into a selected loader profile, start a profile from a button, or control the launcher's documented optional features. The [TypeScript declarations](../../sdk/types/no-loader.d.ts) describe the complete API surface.
+Launcher mods can add launcher pages, widgets, navigation, themes, settings, and inter-mod events. With user-approved capabilities, mods can read profile and server metadata, launch profiles, install Minecraft JARs, control optional launcher features, make bounded HTTPS requests, and check their own update feed. Minecraft-side JARs run inside the game and use the complete API offered by their loader and bundled libraries; Fabric mods can use Fabric API events and Mixins. See the [game mod guide](game-mods.md) and [TypeScript declarations](../../sdk/types/no-loader.d.ts).
 
 Enabled launcher mods start automatically when NoLoader starts. Minecraft game mods are Java JARs loaded by Fabric, Forge, Quilt, or NeoForge when a selected profile starts; installing one does not load code into a game that is already running. NoLoader does not provide an API for arbitrary client source patches or silent game-process injection. See [game mods](game-mods.md) for the separate Minecraft-side workflow.
 
@@ -46,6 +46,8 @@ These calls use the same private request/response channel as the UI API. They ar
 - `api.features.setEnabled(featureId, enabled)` requires `launcher.features.manage`. Supported feature IDs are `curseforge.integration`, `launcher.news`, `launcher.effects` (animated player and background effects), and `launcher.ads`. Changes apply while the mod is enabled and are removed when it stops. When multiple mods set the same feature, a disabled value takes precedence.
 - `api.features.getSnapshot()` requires `launcher.features.manage` and returns the effective values for those four feature IDs.
 - `api.performance.getSnapshot()` requires `launcher.performance.read` and reports active extension count, API requests in the last minute, and sampled average/maximum API latency. It does not report whole-process CPU or memory usage.
+- `api.network.request({ url, method?, headers?, body? })` requires `network.http`. It supports HTTPS GET/POST/PUT/PATCH/DELETE requests, at most 32 headers, a 256 KiB request body, and a 1 MiB UTF-8 response. Redirects are disabled. This is intended for mod backends and metadata services; users should grant it only to mods they trust.
+- `api.updates.check()` checks the HTTPS feed declared by this mod in `updates.manifestUrl` and returns its current remote version and download/changelog links. NoLoader also checks every installed launcher mod with an update feed when the manager starts. It reports newer versions and opens the provided download link; updates are not silently installed.
 
 The launcher also shows a built-in **Zuletzt gespielter Server** button on the Play screen when a server was started through NoRisk Quick Play. Clicking it starts the recorded profile and passes the server address to Minecraft's Quick Play connection path. Launcher mods can make the same action with `servers.getLastPlayed()` followed by `launcher.launchProfile({ profileId, serverAddress })` from a button action.
 
@@ -55,6 +57,19 @@ An extension can check the active feature values and set only a documented featu
 const features = await api.features.getSnapshot();
 api.features.setEnabled("launcher.effects", !features["launcher.effects"]);
 ```
+
+Mods publish a small JSON update feed, for example:
+
+```json
+{
+  "id": "org.example.map",
+  "version": "1.4.0",
+  "downloadUrl": "https://example.org/releases/map-1.4.0.nlmod",
+  "changelogUrl": "https://example.org/releases/1.4.0"
+}
+```
+
+Add the feed URL to the mod manifest as `"updates": { "manifestUrl": "https://example.org/releases/latest.json" }`. The ID must match the installed mod ID, the version uses SemVer, and supplied links must use HTTPS. NoLoader checks feeds at startup and when a mod calls `api.updates.check()`.
 
 The change applies while the mod is enabled and resets when it stops. A launcher mod can package a game JAR in its directory and install it from a visible button action:
 

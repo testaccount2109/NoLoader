@@ -121,6 +121,12 @@ const api = Object.freeze({
     importFromPicker(profileId) { return requestApi("gameMods.importFromPicker", { profileId }); },
     installBundled(profileId, jarPath) { return requestApi("gameMods.installBundled", { profileId, jarPath }); },
   }),
+  updates: Object.freeze({
+    check() { return requestApi("updates.check"); },
+  }),
+  network: Object.freeze({
+    request(request) { return requestApi("network.request", request); },
+  }),
   features: Object.freeze({
     setEnabled(featureId, enabled) {
       send({ type: "feature-override", featureId, enabled });

@@ -22,6 +22,7 @@ import {
   type NoLoaderMod,
 } from "./NoLoaderContext";
 import type { PermissionId } from "./core/manifest";
+import { openExternalUrl } from "../services/tauri-service";
 
 const permissionLabels: Record<
   PermissionId,
@@ -81,6 +82,10 @@ const permissionLabels: Record<
   "events.subscribe": {
     label: "Receive mod events",
     description: "Listen for namespaced events from other mods.",
+  },
+  "network.http": {
+    label: "Connect to web APIs",
+    description: "Send HTTPS requests to mod services. Requests and responses are size-limited.",
   },
 };
 
@@ -807,6 +812,22 @@ function ModDetails({
           >
             {mod.detail}
           </p>
+        )}
+        {mod.update && (
+          <div className={`mt-3 rounded-md border px-3 py-2 text-xs ${mod.update.state === "available" ? "border-sky-200/20 bg-sky-300/[0.07] text-sky-100" : "border-white/[0.07] bg-black/15 text-white/50"}`}>
+            {mod.update.state === "checking" && "Checking for updates…"}
+            {mod.update.state === "current" && "Mod is up to date."}
+            {mod.update.state === "error" && `Update check failed: ${mod.update.detail}`}
+            {mod.update.state === "available" && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>Update available: {mod.update.version}</span>
+                <div className="flex gap-3">
+                  {mod.update.changelogUrl && <button type="button" className="underline" onClick={() => void openExternalUrl(mod.update!.changelogUrl!)}>Changelog</button>}
+                  {mod.update.downloadUrl && <button type="button" className="font-semibold underline" onClick={() => void openExternalUrl(mod.update!.downloadUrl!)}>Download</button>}
+                </div>
+              </div>
+            )}
+          </div>
         )}
         <button
           type="button"

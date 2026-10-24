@@ -17,6 +17,9 @@ const MAX_MOD_ASSET_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_BUNDLED_GAME_MOD_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_MOD_DIRECTORIES: usize = 2048;
 const MAX_TOTAL_MANIFEST_BYTES: usize = 16 * 1024 * 1024;
+const MAX_UPDATE_MANIFEST_BYTES: usize = 64 * 1024;
+const MAX_MOD_HTTP_REQUEST_BYTES: usize = 256 * 1024;
+const MAX_MOD_HTTP_RESPONSE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +60,152 @@ pub struct LastPlayedServer {
 pub struct ModStorageRead {
     pub found: bool,
     pub value: Option<Value>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModHttpResponse {
+    pub status: u16,
+    pub ok: bool,
+    pub content_type: Option<String>,
+    pub body: String,
+}
+
+#[tauri::command]
+pub async fn noloader_http_request(
+    url: String,
+    method: String,
+    headers: std::collections::HashMap<String, String>,
+    body: Option<String>,
+) -> Result<ModHttpResponse, String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|_| "Request URL is invalid.".to_string())?;
+    if parsed.scheme() != "https"
+        || parsed.host_str().is_none()
+        || parsed.username() != ""
+        || parsed.password().is_some()
+    {
+        return Err("Mod network requests require an HTTPS URL without credentials.".to_string());
+    }
+    let method = reqwest::Method::from_bytes(method.to_ascii_uppercase().as_bytes())
+        .map_err(|_| "HTTP method is invalid.".to_string())?;
+    if !matches!(
+        method,
+        reqwest::Method::GET
+            | reqwest::Method::POST
+            | reqwest::Method::PUT
+            | reqwest::Method::PATCH
+            | reqwest::Method::DELETE
+    ) {
+        return Err("Only GET, POST, PUT, PATCH, and DELETE are supported.".to_string());
+    }
+    if headers.len() > 32 {
+        return Err("A mod request may contain at most 32 headers.".to_string());
+    }
+    let mut header_map = reqwest::header::HeaderMap::new();
+    for (name, value) in headers {
+        let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| "Request contains an invalid header name.".to_string())?;
+        let value = reqwest::header::HeaderValue::from_str(&value)
+            .map_err(|_| "Request contains an invalid header value.".to_string())?;
+        header_map.insert(name, value);
+    }
+    if body
+        .as_ref()
+        .is_some_and(|value| value.len() > MAX_MOD_HTTP_REQUEST_BYTES)
+    {
+        return Err("Mod network request body exceeds 256 KiB.".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(concat!("NoLoader/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| format!("Could not create HTTP client: {error}"))?;
+    let mut response = client
+        .request(method, parsed)
+        .headers(header_map)
+        .body(body.unwrap_or_default())
+        .send()
+        .await
+        .map_err(|error| format!("Mod network request failed: {error}"))?;
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_MOD_HTTP_RESPONSE_BYTES as u64)
+    {
+        return Err("Mod network response exceeds 1 MiB.".to_string());
+    }
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("Could not read mod network response: {error}"))?
+    {
+        if bytes.len().saturating_add(chunk.len()) > MAX_MOD_HTTP_RESPONSE_BYTES {
+            return Err("Mod network response exceeds 1 MiB.".to_string());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    let body = String::from_utf8(bytes)
+        .map_err(|_| "Mod network response is not valid UTF-8 text.".to_string())?;
+    Ok(ModHttpResponse {
+        status: status.as_u16(),
+        ok: status.is_success(),
+        content_type,
+        body,
+    })
+}
+
+#[tauri::command]
+pub async fn noloader_fetch_update_manifest(url: String) -> Result<String, String> {
+    let parsed =
+        reqwest::Url::parse(&url).map_err(|_| "Update manifest URL is invalid.".to_string())?;
+    if parsed.scheme() != "https"
+        || parsed.host_str().is_none()
+        || parsed.username() != ""
+        || parsed.password().is_some()
+    {
+        return Err(
+            "Update manifest URL must be HTTPS and must not contain credentials.".to_string(),
+        );
+    }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(12))
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(concat!("NoLoader/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| format!("Could not create update client: {error}"))?;
+    let response = client
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|error| format!("Could not check for mod updates: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("Update server returned an error: {error}"))?;
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_UPDATE_MANIFEST_BYTES as u64)
+    {
+        return Err("Update manifest is larger than 64 KiB.".to_string());
+    }
+    let mut response = response;
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("Could not read update manifest: {error}"))?
+    {
+        if bytes.len().saturating_add(chunk.len()) > MAX_UPDATE_MANIFEST_BYTES {
+            return Err("Update manifest is larger than 64 KiB.".to_string());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    String::from_utf8(bytes).map_err(|_| "Update manifest is not valid UTF-8.".to_string())
 }
 
 #[derive(Debug, Deserialize, Serialize)]

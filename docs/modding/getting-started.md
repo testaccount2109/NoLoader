@@ -31,7 +31,7 @@ Copy an SDK example and edit `noloader.mod.json`. Each launcher extension lives 
 
 The frontend entry point is a self-contained ES module bundle with a named `activate(api)` export. Bundle dependencies into the single file. The returned cleanup function runs when the mod is disabled, restarted, or the launcher tears down its worker.
 
-Declare only the permissions the extension uses. The API includes `ui.pages`, `ui.navigation`, `ui.home`, `ui.globalStyles`, `launcher.profiles.read`, `launcher.lastServer.read`, `launcher.launch`, `game.mods.install`, `launcher.features.manage`, `launcher.performance.read`, `storage.mod`, `events.publish`, and `events.subscribe`. A permission controls calls through the NoLoader API; it is not an operating-system permission. The manager's mod details show the permissions requested in the manifest.
+Declare the capabilities the extension needs: `ui.pages`, `ui.navigation`, `ui.home`, `ui.globalStyles`, `launcher.profiles.read`, `launcher.lastServer.read`, `launcher.launch`, `game.mods.install`, `launcher.features.manage`, `launcher.performance.read`, `storage.mod`, `events.publish`, `events.subscribe`, and `network.http`. `network.http` enables bounded HTTPS calls to your own services. The manager shows requested capabilities so users can decide what to trust. For unrestricted in-game functionality, ship a Java game mod using the target loader's APIs; launcher extensions and game mods have separate runtimes.
 
 See [the manifest reference](manifest.md), [the API reference](api-reference.md), [lifecycle](lifecycle.md), [permissions](permissions.md), and [security status](security.md) before distributing an extension.
 

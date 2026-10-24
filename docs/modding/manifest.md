@@ -11,6 +11,7 @@ The core reads UTF-8 JSON named `noloader.mod.json`. It rejects malformed JSON, 
   "description": "A small example of a NoLoader launcher page and action.",
   "apiVersion": 1,
   "launcherVersions": ["0.6.29"],
+  "updates": { "manifestUrl": "https://example.org/mod/latest.json" },
   "entrypoints": {
     "frontend": "dist/index.js",
     "styles": "styles.css"
@@ -32,7 +33,8 @@ The core reads UTF-8 JSON named `noloader.mod.json`. It rejects malformed JSON, 
 - `authors`: optional array of at most 32 non-empty names.
 - `license`: optional non-empty label; it does not grant redistribution rights.
 - `repository`: optional HTTPS URL.
-- `apiVersion`: required positive integer. API 2 is current; current NoLoader builds continue to support API 1 extensions. NoLoader 1.0.1 supports API 1 only.
+- `updates.manifestUrl`: optional HTTPS JSON feed URL. NoLoader checks it on manager startup and compares the feed's SemVer version with the installed mod. The feed must return `{ "id": "org.example.hello", "version": "1.2.0", "downloadUrl": "https://…", "changelogUrl": "https://…" }`; links are optional but, when present, must be HTTPS. New versions are reported with links and are never silently installed.
+- `apiVersion`: required positive integer. API 3 is current; current NoLoader builds continue to support API 1 and 2 extensions.
 - `launcherVersions`: required non-empty list of at most 32 SemVer versions. Compatibility is an exact SemVer precedence match against the running launcher version.
 - `entrypoints.frontend`: required relative `.js` or `.mjs` file path.
 - `entrypoints.styles`: optional relative `.css` file path.
@@ -41,7 +43,7 @@ The core reads UTF-8 JSON named `noloader.mod.json`. It rejects malformed JSON, 
 - `dependencies`: optional list of `{ "id": string, "version": SemVer }` exact pins. A missing or mismatched required dependency blocks the mod.
 - `optionalDependencies`: same shape as required dependencies. Missing or mismatched optional dependencies do not block the mod and do not affect load order.
 - `conflicts`: optional list of mod IDs. A conflict declared by either installed mod blocks both.
-- `permissions`: optional list of `ui.navigation`, `ui.pages`, `ui.home`, `ui.globalStyles`, `launcher.profiles.read`, `launcher.lastServer.read`, `launcher.launch`, `game.mods.install`, `launcher.features.manage`, `launcher.performance.read`, `storage.mod`, `events.publish`, and `events.subscribe`. These labels govern documented NoLoader API calls only; they do not create an operating-system security boundary.
+- `permissions`: optional list of `ui.navigation`, `ui.pages`, `ui.home`, `ui.globalStyles`, `launcher.profiles.read`, `launcher.lastServer.read`, `launcher.launch`, `game.mods.install`, `launcher.features.manage`, `launcher.performance.read`, `storage.mod`, `events.publish`, `events.subscribe`, and `network.http`. Network permission allows bounded HTTPS requests through the native host. These labels govern documented NoLoader API calls; a worker is not a complete operating-system security boundary.
 
 If an older launcher reports `permissions[n]: Unknown permission`, the installed core predates the requested capability. Install a launcher build that supports the mod's API and permission list. Replacing the permission with a different existing one is unsafe because it changes what the user is approving.
 
