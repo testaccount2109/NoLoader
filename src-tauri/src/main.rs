@@ -592,6 +592,7 @@ async fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             noriskclient_launcher_v3_lib::noloader::noloader_list_mods,
+            noriskclient_launcher_v3_lib::noloader::noloader_get_extension_host_version,
             noriskclient_launcher_v3_lib::noloader::noloader_http_request,
             noriskclient_launcher_v3_lib::noloader::noloader_process_run,
             noriskclient_launcher_v3_lib::noloader::noloader_process_spawn,

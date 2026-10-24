@@ -26,6 +26,12 @@ const MAX_MOD_HTTP_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_MANAGED_PROCESSES: usize = 32;
 const MAX_PROCESS_OUTPUT_BYTES: usize = 1024 * 1024;
 const MAX_PROCESS_READ_BYTES: usize = 256 * 1024;
+const NOLOADER_EXTENSION_HOST_VERSION: &str = "0.6.30-noloader.4";
+
+#[tauri::command]
+pub fn noloader_get_extension_host_version() -> String {
+    NOLOADER_EXTENSION_HOST_VERSION.to_string()
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

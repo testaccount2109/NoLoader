@@ -52,6 +52,13 @@ jobs:
       - name: Collect frontend dependency notices
         shell: pwsh
         run: yarn licenses generate-disclaimer | Out-File -FilePath (Join-Path $env:RUNNER_TEMP 'THIRD-PARTY-LICENSES.txt') -Encoding utf8NoBOM
+      - name: Set launcher update version from release tag
+        shell: pwsh
+        run: |
+          $configPath = Join-Path $env:GITHUB_WORKSPACE 'src-tauri\tauri.conf.json'
+          $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+          $config.version = '${{ steps.release.outputs.version }}'
+          $config | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $configPath -Encoding utf8NoBOM
       - name: Build prepared NoLoader launcher
         run: yarn tauri build
       - name: Package prepared launcher and required notices

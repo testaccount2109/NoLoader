@@ -16,7 +16,6 @@ import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { readDir, readFile, readTextFile, writeFile, writeTextFile, mkdir, remove, copyFile, rename, exists, stat } from "@tauri-apps/plugin-fs";
 import { toast } from "react-hot-toast";
 import { open as openDialog, save as saveDialog, confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
-import { getVersion } from "@tauri-apps/api/app";
 import * as ProfileService from "../services/profile-service";
 import { launch as launchProfile } from "../services/process-service";
 import {
@@ -303,7 +302,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
     try {
       const [snapshot, runningVersion] = await Promise.all([
         invoke<NativeModSnapshot>("noloader_list_mods"),
-        getVersion(),
+        invoke<string>("noloader_get_extension_host_version"),
       ]);
       if (currentGeneration !== generation.current) return;
       setModsDirectory(snapshot.modsDirectory);
