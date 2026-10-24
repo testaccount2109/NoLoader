@@ -19,7 +19,7 @@ yarn sdk:performance-mod:build
 4. Return to NoLoader and choose **Refresh**.
 5. Select **Quick Join Probe**.
 
-The latest server launched through NoRisk Quick Play appears below the Play controls. To add separate examples, build and install `sdk/game-mod-import` or `sdk/performance-mod` in the same way. The game-mod importer opens the native file picker from a user click. The performance page can disable CurseForge integration, news, background and skin effects, and ad UI, and reports extension API latency.
+The launcher shows a built-in button for the latest server launched through NoRisk Quick Play below the Play controls. The `sdk/quick-join-mod` example also demonstrates that feature through the mod API. To add separate examples, build and install `sdk/game-mod-import` or `sdk/performance-mod` in the same way. The game-mod importer opens the native file picker from a user click. The performance page can disable CurseForge integration, news, background and skin effects, and ad UI, and reports mod API latency.
 
 ## Modify Minecraft itself
 

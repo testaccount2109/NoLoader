@@ -24,6 +24,7 @@ import { setDiscordState } from "../../utils/discordRpc";
 import { useTranslation } from "react-i18next";
 import { useNoLoader } from "../../noloader/NoLoaderContext";
 import { ModUiTree } from "../../noloader/ModUiTree";
+import { LastPlayedServerButton } from "../launcher/LastPlayedServerButton";
 
 export function PlayTab() {
   const { t } = useTranslation();
@@ -147,6 +148,7 @@ export function PlayTab() {
             className=""
             outline={outline}
           />
+          <LastPlayedServerButton />
           {renderHomeWidgets(homeWidgetsAfterPlay)}
         </div>
       </div>

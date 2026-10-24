@@ -28,4 +28,6 @@ An extension may request `game.mods.install`. The host then exposes only `api.ga
 - verifies that the selected profile exists and has a supported game loader;
 - uses NoRisk's native JAR picker and existing local-mod import command.
 
+Launcher mods may also ship a game JAR and install it from a visible button action with `api.gameMods.installBundled(profileId, "game-mods/addon.jar")`. NoLoader restricts the path to that launcher mod's own folder, rejects symbolic links and oversized files, checks for a JAR archive signature, and does not overwrite a file already present in the profile. Fabric, Forge, Quilt, or NeoForge discovers the copied file when the profile starts next time; it cannot be hot-loaded into an already running Minecraft process. Bundled game JARs execute code inside Minecraft, so review them and request the `game.mods.install` permission only when needed.
+
 The extension does not receive the selected file paths or arbitrary file access. It cannot call Tauri commands directly or inject code into a running Minecraft process. The selected game's loader starts the imported JARs on a later game launch.

@@ -6,7 +6,7 @@ namespace NoLoader.Installer.Core;
 
 public sealed class LauncherInstallCoordinator(SignedReleaseProvider? releases = null)
 {
-    public const string InstallerVersion = "1.0.4";
+    public const string InstallerVersion = "1.0.5";
     private const string MarkerName = ".noloader-install.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

@@ -4,7 +4,7 @@ An entry point exports `activate(api)`. No global launcher object is exposed. AP
 
 ## Available mod features
 
-Launcher mods can add validated launcher pages, home widgets, navigation links, scoped or global themes, persistent mod-owned settings, and namespaced events for other mods. With explicit manifest permissions they can also read basic profile metadata, open a JAR picker for an installed game profile, start a profile from a button, or control the launcher's documented optional features. The [TypeScript declarations](../../sdk/types/no-loader.d.ts) describe the complete API surface.
+Launcher mods can add validated launcher pages, home widgets, navigation links, scoped or global themes, persistent mod-owned settings, and namespaced events for other mods. With explicit manifest permissions they can also read basic profile metadata, open a JAR picker or install a bundled game-mod JAR into a selected loader profile, start a profile from a button, or control the launcher's documented optional features. The [TypeScript declarations](../../sdk/types/no-loader.d.ts) describe the complete API surface.
 
 Enabled launcher mods start automatically when NoLoader starts. Minecraft game mods are Java JARs loaded by Fabric, Forge, Quilt, or NeoForge when a selected profile starts; installing one does not load code into a game that is already running. NoLoader does not provide an API for arbitrary client source patches or silent game-process injection. See [game mods](game-mods.md) for the separate Minecraft-side workflow.
 
@@ -41,10 +41,13 @@ These calls use the same private request/response channel as the UI API. They ar
 - `api.profiles.list()` requires `launcher.profiles.read` and returns only profile ID, name, game version, loader, last-played time, and whether the profile is the launcher's last-played profile. Profile paths, settings, and account data are not included.
 - `api.servers.getLastPlayed()` requires `launcher.lastServer.read` and returns the most recent multiplayer Quick Play target requested through NoRisk as `{ profileId, address, playedAt }`, or `null` if none has been recorded. Manual server joins made inside Minecraft are not tracked yet.
 - `api.launcher.launchProfile({ profileId, serverAddress? })` requires `launcher.launch`. The profile must exist in the installed launcher configuration. When `serverAddress` is supplied, NoRisk's existing Quick Play path starts Minecraft and requests a direct multiplayer connection. Accepted launcher Quick Play requests are recorded for the last-server API.
-- `api.gameMods.importFromPicker(profileId)` requires `game.mods.install`. It opens NoRisk's native JAR picker and imports the chosen game mods into an existing Fabric, Forge, Quilt, or NeoForge profile. It must be called directly from a NoLoader button action. The game's loader runs these JARs inside Minecraft; they can change game behavior and should be treated as trusted code.
+- `api.gameMods.importFromPicker(profileId)` requires `game.mods.install`. It opens NoRisk's native JAR picker and imports the chosen game mods into an existing Fabric, Forge, Quilt, or NeoForge profile. It must be called directly from a NoLoader button action.
+- `api.gameMods.installBundled(profileId, jarPath)` requires `game.mods.install`. It copies a `.jar` shipped inside the launcher mod's folder into the selected Fabric, Forge, Quilt, or NeoForge profile. `jarPath` is relative to that mod folder, such as `game-mods/feature-addon.jar`; paths cannot escape the folder. The call must come directly from a NoLoader button action. Existing filenames are never overwritten. The loader picks up the JAR on the next game launch, so a running game must be restarted. Minecraft game JARs execute code in the game process and should be reviewed and trusted.
 - `api.features.setEnabled(featureId, enabled)` requires `launcher.features.manage`. Supported feature IDs are `curseforge.integration`, `launcher.news`, `launcher.effects` (animated player and background effects), and `launcher.ads`. Changes apply while the mod is enabled and are removed when it stops. When multiple mods set the same feature, a disabled value takes precedence.
 - `api.features.getSnapshot()` requires `launcher.features.manage` and returns the effective values for those four feature IDs.
 - `api.performance.getSnapshot()` requires `launcher.performance.read` and reports active extension count, API requests in the last minute, and sampled average/maximum API latency. It does not report whole-process CPU or memory usage.
+
+The launcher also shows a built-in **Zuletzt gespielter Server** button on the Play screen when a server was started through NoRisk Quick Play. Clicking it starts the recorded profile and passes the server address to Minecraft's Quick Play connection path. Launcher mods can make the same action with `servers.getLastPlayed()` followed by `launcher.launchProfile({ profileId, serverAddress })` from a button action.
 
 An extension can check the active feature values and set only a documented feature ID:
 
@@ -53,20 +56,24 @@ const features = await api.features.getSnapshot();
 api.features.setEnabled("launcher.effects", !features["launcher.effects"]);
 ```
 
-The change applies while the mod is enabled and resets when it stops. To initiate a game action, connect it to a visible button and handle failures:
+The change applies while the mod is enabled and resets when it stops. A launcher mod can package a game JAR in its directory and install it from a visible button action:
 
 ```ts
 api.onAction(async (action) => {
-  if (action !== "open-mod-picker") return;
+  if (action !== "install-feature-addon") return;
   try {
-    await api.gameMods.importFromPicker(profileId);
+    const filename = await api.gameMods.installBundled(
+      profileId,
+      "game-mods/feature-addon.jar",
+    );
+    console.info(`Installed ${filename}; restart Minecraft to load it.`);
   } catch (error) {
-    console.error("Could not import game mods", error);
+    console.error("Could not install the game add-on", error);
   }
 });
 ```
 
-An extension must call `launchProfile` and `gameMods.importFromPicker` while handling a NoLoader button action. The host uses a short-lived, single-use gesture token, so a mod cannot start Minecraft or open the game-mod picker during activation or later from a timer. Handle a rejected promise, for example when the account is signed out or the profile cannot start. A server address must be a host, optional port, or IPv6 address; it cannot contain whitespace or control characters.
+An extension must call `launchProfile`, `gameMods.importFromPicker`, or `gameMods.installBundled` while handling a NoLoader button action. The host uses a short-lived, single-use gesture token, so a mod cannot start Minecraft or install game JARs during activation or later from a timer. Handle a rejected promise, for example when the account is signed out, the profile cannot start, or a bundled JAR is missing. A server address must be a host, optional port, or IPv6 address; it cannot contain whitespace or control characters.
 
 ## Extension storage
 

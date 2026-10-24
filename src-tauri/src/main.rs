@@ -597,6 +597,7 @@ async fn main() {
             noriskclient_launcher_v3_lib::noloader::noloader_read_mod_assets,
             noriskclient_launcher_v3_lib::noloader::noloader_get_last_played_server,
             noriskclient_launcher_v3_lib::noloader::noloader_record_last_played_server,
+            noriskclient_launcher_v3_lib::noloader::noloader_install_bundled_game_mod,
             noriskclient_launcher_v3_lib::noloader::noloader_get_mod_storage,
             noriskclient_launcher_v3_lib::noloader::noloader_set_mod_storage,
             noriskclient_launcher_v3_lib::noloader::noloader_delete_mod_storage,

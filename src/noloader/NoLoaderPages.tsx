@@ -21,6 +21,68 @@ import {
   type ModLifecycleState,
   type NoLoaderMod,
 } from "./NoLoaderContext";
+import type { PermissionId } from "./core/manifest";
+
+const permissionLabels: Record<
+  PermissionId,
+  { label: string; description: string }
+> = {
+  "ui.pages": {
+    label: "Add launcher pages",
+    description: "Show this mod's pages in the launcher.",
+  },
+  "ui.navigation": {
+    label: "Add launcher navigation",
+    description: "Add links to pages provided by this mod.",
+  },
+  "ui.home": {
+    label: "Add Play screen widgets",
+    description: "Show widgets around the Play controls.",
+  },
+  "ui.globalStyles": {
+    label: "Change launcher appearance",
+    description: "Apply styles across launcher screens.",
+  },
+  "launcher.profiles.read": {
+    label: "Read profile details",
+    description: "Read profile names, game versions, and loader types.",
+  },
+  "launcher.lastServer.read": {
+    label: "Read the last Quick Play server",
+    description: "Read the last server started through NoRisk Quick Play.",
+  },
+  "launcher.launch": {
+    label: "Start a Minecraft profile",
+    description:
+      "Start a profile, optionally joining a server, from a button action.",
+  },
+  "game.mods.install": {
+    label: "Install Minecraft game mods",
+    description:
+      "Import selected JARs or install a bundled JAR into a loader profile. The game loads JAR code on its next start.",
+  },
+  "launcher.features.manage": {
+    label: "Manage optional launcher features",
+    description:
+      "Control the documented news, effects, ads, and CurseForge options.",
+  },
+  "launcher.performance.read": {
+    label: "Read mod API performance",
+    description: "Read mod API request and latency samples.",
+  },
+  "storage.mod": {
+    label: "Save mod settings",
+    description: "Store JSON data owned by this mod.",
+  },
+  "events.publish": {
+    label: "Send mod events",
+    description: "Publish namespaced events for other mods.",
+  },
+  "events.subscribe": {
+    label: "Receive mod events",
+    description: "Listen for namespaced events from other mods.",
+  },
+};
 
 const statePresentation: Record<
   ModLifecycleState,
@@ -278,8 +340,8 @@ export function NoLoaderManagerPage() {
                 {error
                   ? "Open NoLoader in the desktop launcher to read or change this setting."
                   : safeMode
-                    ? "No extensions are started. Their individual enabled settings are preserved."
-                    : "Pause extension startup if a mod is preventing the launcher from working."}
+                    ? "No launcher mods are started. Their individual enabled settings are preserved."
+                    : "Pause launcher mod startup if a mod is preventing the launcher from working."}
               </p>
             </div>
           </div>
@@ -302,7 +364,7 @@ export function NoLoaderManagerPage() {
             ) : (
               <Power className="h-4 w-4" aria-hidden="true" />
             )}
-            {safeMode ? "Resume extensions" : "Pause extensions"}
+            {safeMode ? "Resume launcher mods" : "Pause launcher mods"}
           </button>
         </div>
 
@@ -405,7 +467,7 @@ export function NoLoaderManagerPage() {
             ) && (
               <div className="border-t border-white/[0.08] p-4">
                 <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">
-                  Extension pages
+                  Mod pages
                 </h3>
                 <div className="flex flex-wrap gap-2">
                   {navigation
@@ -463,7 +525,7 @@ export function NoLoaderManagerPage() {
               <div className="flex min-h-[300px] flex-col items-center justify-center p-8 text-center text-white/50">
                 <Blocks className="mb-3 h-8 w-8" aria-hidden="true" />
                 <p className="text-sm">
-                  Select an extension to inspect its manifest and status.
+                  Select a mod to inspect its manifest and status.
                 </p>
               </div>
             )}
@@ -511,9 +573,9 @@ export function NoLoaderExtensionPage() {
       <div className="flex h-full items-center justify-center p-8 text-white">
         <div className="max-w-md rounded-lg border border-white/10 bg-[#0d121a]/90 p-6">
           <CircleX className="mb-3 h-6 w-6 text-amber-200" aria-hidden="true" />
-          <h1 className="text-lg font-semibold">Extension page unavailable</h1>
+          <h1 className="text-lg font-semibold">Mod page unavailable</h1>
           <p className="mt-2 text-sm text-white/55">
-            This page is not registered by a running extension. It may have been
+            This page is not registered by a running mod. It may have been
             disabled or failed to load.
           </p>
           <button
@@ -758,13 +820,12 @@ function ModDetails({
             <Power className="h-4 w-4" aria-hidden="true" />
           )}
           {mod.enabled
-            ? "Disable and restart extensions"
-            : "Enable and restart extensions"}
+            ? "Disable launcher mod and restart"
+            : "Enable launcher mod and restart"}
         </button>
         {!manifest && (
           <p className="mt-2 text-[11px] text-white/35">
-            Invalid extensions cannot be enabled until their manifest is
-            corrected.
+            Invalid mods cannot be enabled until their manifest is corrected.
           </p>
         )}
       </div>
@@ -790,15 +851,33 @@ function ModDetails({
                   loadOrder === undefined ? "Not running" : `#${loadOrder}`
                 }
               />
-              <Detail
-                label="Permissions"
-                value={
-                  manifest.permissions.length
-                    ? manifest.permissions.join(", ")
-                    : "None requested"
-                }
-              />
             </dl>
+          </section>
+          <section>
+            <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+              Requested capabilities
+            </h3>
+            {manifest.permissions.length ? (
+              <ul className="mt-2 space-y-2">
+                {manifest.permissions.map((permission) => (
+                  <li
+                    key={permission}
+                    className="rounded-md border border-white/[0.07] bg-black/15 px-3 py-2"
+                  >
+                    <p className="text-xs font-medium text-white/75">
+                      {permissionLabels[permission]?.label ?? permission}
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-4 text-white/40">
+                      {permissionLabels[permission]?.description ?? permission}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-xs text-white/40">
+                This mod requests no additional capabilities.
+              </p>
+            )}
           </section>
           <section>
             <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
@@ -861,8 +940,8 @@ function ModDetails({
               className="mt-0.5 h-3.5 w-3.5 shrink-0"
               aria-hidden="true"
             />
-            Extensions are third-party code. A worker protects the launcher UI
-            boundary, but is not an operating-system sandbox.
+            Launcher mods are third-party code. A worker protects the launcher
+            UI boundary, but is not an operating-system sandbox.
           </p>
         </div>
       )}

@@ -119,6 +119,7 @@ const api = Object.freeze({
   }),
   gameMods: Object.freeze({
     importFromPicker(profileId) { return requestApi("gameMods.importFromPicker", { profileId }); },
+    installBundled(profileId, jarPath) { return requestApi("gameMods.installBundled", { profileId, jarPath }); },
   }),
   features: Object.freeze({
     setEnabled(featureId, enabled) {

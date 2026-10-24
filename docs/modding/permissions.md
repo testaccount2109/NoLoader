@@ -2,25 +2,25 @@
 
 Permissions declare which calls an extension uses through the NoLoader API. They do not grant operating-system access.
 
-| Permission                 | Available calls                      |
-| -------------------------- | ------------------------------------ |
-| `ui.pages`                 | `api.registerPage`, `api.updatePage` |
-| `ui.navigation`            | `api.registerNavigationItem`         |
-| `ui.home`                  | `api.registerHomeWidget`, `api.updateHomeWidget` |
-| `ui.globalStyles`          | `api.theme.registerGlobalStyles`, `api.theme.updateGlobalStyles` |
-| `launcher.profiles.read`   | `api.profiles.list`                  |
-| `launcher.lastServer.read` | `api.servers.getLastPlayed`          |
-| `launcher.launch`          | `api.launcher.launchProfile`         |
-| `game.mods.install`        | `api.gameMods.importFromPicker`      |
-| `launcher.features.manage` | `api.features.setEnabled`, `api.features.getSnapshot` |
-| `launcher.performance.read` | `api.performance.getSnapshot` |
-| `storage.mod`              | `api.storage.get`, `set`, `delete`   |
-| `events.publish`           | `api.events.emit`                    |
-| `events.subscribe`          | `api.events.on`                      |
+| Permission                  | Available calls                                                  |
+| --------------------------- | ---------------------------------------------------------------- |
+| `ui.pages`                  | `api.registerPage`, `api.updatePage`                             |
+| `ui.navigation`             | `api.registerNavigationItem`                                     |
+| `ui.home`                   | `api.registerHomeWidget`, `api.updateHomeWidget`                 |
+| `ui.globalStyles`           | `api.theme.registerGlobalStyles`, `api.theme.updateGlobalStyles` |
+| `launcher.profiles.read`    | `api.profiles.list`                                              |
+| `launcher.lastServer.read`  | `api.servers.getLastPlayed`                                      |
+| `launcher.launch`           | `api.launcher.launchProfile`                                     |
+| `game.mods.install`         | `api.gameMods.importFromPicker`, `api.gameMods.installBundled`   |
+| `launcher.features.manage`  | `api.features.setEnabled`, `api.features.getSnapshot`            |
+| `launcher.performance.read` | `api.performance.getSnapshot`                                    |
+| `storage.mod`               | `api.storage.get`, `set`, `delete`                               |
+| `events.publish`            | `api.events.emit`                                                |
+| `events.subscribe`          | `api.events.on`                                                  |
 
 An omitted permission rejects that API request. The NoLoader manager displays the manifest's requested permissions before a user enables an extension. Extensions should request only the capabilities they use. `api.onAction` is available for handling actions from a page or home widget and does not expose launcher state.
 
-`game.mods.install` lets an extension open the native JAR picker and import selected files into a non-vanilla game profile. This installs executable Java code in the game through its loader. The call requires a user button action, and the permission is shown before enabling the extension.
+`game.mods.install` lets a launcher mod open the native JAR picker or copy a bundled JAR from its own folder into a non-vanilla game profile. This installs executable Java code in Minecraft through its loader. Both calls require a direct user button action, and the permission is shown before enabling the mod. The loader reads the JAR the next time the profile starts; this does not inject into a running game.
 
 `launcher.features.manage` lets an extension override the four documented optional launcher features: CurseForge integration, the news panel, animated player/background effects, and ad UI. Overrides are volatile, extension-owned, and cleared when the mod stops. If two mods disagree, a disable request takes precedence. The permission does not grant arbitrary launcher code execution or access to unlisted features.
 

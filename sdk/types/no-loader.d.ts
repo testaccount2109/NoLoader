@@ -99,6 +99,7 @@ export interface NoLoaderApi {
   };
   gameMods: {
     importFromPicker(profileId: string): Promise<void>;
+    installBundled(profileId: string, jarPath: string): Promise<string>;
   };
   features: {
     setEnabled(featureId: ModFeatureId, enabled: boolean): void;

@@ -577,6 +577,42 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
             respond(true);
             return;
           }
+          case "gameMods.installBundled": {
+            requirePermission("game.mods.install");
+            requireUserAction(true);
+            const payload = message.payload as Record<string, unknown> | undefined;
+            const profileId = payload?.profileId;
+            const jarPath = payload?.jarPath;
+            if (typeof profileId !== "string" || profileId.length > 64) {
+              throw new Error("Bundled game mod request has an invalid profile ID.");
+            }
+            if (typeof jarPath !== "string" || jarPath.length > 240) {
+              throw new Error("Bundled game mod request has an invalid JAR path.");
+            }
+            const [response, standard] = await Promise.all([
+              ProfileService.getAllProfilesAndLastPlayed(),
+              ProfileService.getStandardProfiles(),
+            ]);
+            const profile = [...standard.profiles, ...response.all_profiles].find(
+              (entry) => entry.id === profileId,
+            );
+            if (!profile) {
+              throw new Error("The requested launcher profile does not exist.");
+            }
+            if (!["fabric", "forge", "quilt", "neoforge"].includes(profile.loader.toLowerCase())) {
+              throw new Error("Install a game mod loader for this profile before installing bundled game mods.");
+            }
+            const runtime = workers.current.get(modId);
+            if (!runtime) throw new Error("The launcher mod is no longer running.");
+            const installedFile = await invoke<string>("noloader_install_bundled_game_mod", {
+              modId,
+              modDirectory: runtime.directory,
+              profileId,
+              jarPath,
+            });
+            respond(true, installedFile);
+            return;
+          }
           case "performance.getSnapshot": {
             requirePermission("launcher.performance.read");
             const now = Date.now();
