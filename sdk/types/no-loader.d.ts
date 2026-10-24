@@ -83,6 +83,40 @@ export interface ModHttpResponse {
   body: string;
 }
 
+export interface ModNotification {
+  title: string;
+  body?: string;
+  kind?: "info" | "success" | "error";
+}
+
+export interface ModFileEntry {
+  name: string;
+  path: string;
+  kind: "file" | "directory" | "other";
+  size: number;
+}
+
+export interface ModWindowOptions {
+  id: string;
+  title: string;
+  pageId: string;
+  width?: number;
+  height?: number;
+}
+
+export interface ModProcessRequest {
+  program: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+export interface ModProcessResult {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
 export interface LaunchProfileRequest {
   profileId: string;
   serverAddress?: string;
@@ -118,10 +152,42 @@ export interface NoLoaderApi {
   };
   launcher: {
     launchProfile(request: LaunchProfileRequest): Promise<void>;
+    openExternal(url: string): Promise<void>;
   };
-  gameMods: {
-    importFromPicker(profileId: string): Promise<void>;
-    installBundled(profileId: string, jarPath: string): Promise<string>;
+  notifications: {
+    show(notification: ModNotification): Promise<void>;
+  };
+  clipboard: {
+    readText(): Promise<string>;
+    writeText(text: string): Promise<void>;
+  };
+  dialogs: {
+    openFile(options?: { multiple?: boolean; filters?: Array<{ name: string; extensions: string[] }> }): Promise<string | string[] | null>;
+    openDirectory(): Promise<string | null>;
+    saveFile(options?: { defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }): Promise<string | null>;
+    confirm(title: string, message: string): Promise<boolean>;
+  };
+  windows: {
+    openPage(options: ModWindowOptions): Promise<string>;
+    close(id: string): Promise<void>;
+  };
+  system: {
+    files: {
+      readText(path: string): Promise<string>;
+      writeText(path: string, content: string): Promise<void>;
+      readBinary(path: string): Promise<string>;
+      writeBinary(path: string, base64: string): Promise<void>;
+      listDirectory(path: string): Promise<ModFileEntry[]>;
+      createDirectory(path: string, recursive?: boolean): Promise<void>;
+      remove(path: string, recursive?: boolean): Promise<void>;
+      copy(source: string, destination: string): Promise<void>;
+      move(source: string, destination: string): Promise<void>;
+      exists(path: string): Promise<boolean>;
+    };
+    process: {
+      run(request: ModProcessRequest): Promise<ModProcessResult>;
+      open(path: string): Promise<void>;
+    };
   };
   updates: {
     check(): Promise<ModUpdateCheck | null>;

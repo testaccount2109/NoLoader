@@ -23,6 +23,7 @@ import {
 } from "./NoLoaderContext";
 import type { PermissionId } from "./core/manifest";
 import { openExternalUrl } from "../services/tauri-service";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 const permissionLabels: Record<
   PermissionId,
@@ -30,11 +31,11 @@ const permissionLabels: Record<
 > = {
   "ui.pages": {
     label: "Add launcher pages",
-    description: "Show this mod's pages in the launcher.",
+    description: "Show this extension's pages in the launcher.",
   },
   "ui.navigation": {
     label: "Add launcher navigation",
-    description: "Add links to pages provided by this mod.",
+    description: "Add links to pages provided by this extension.",
   },
   "ui.home": {
     label: "Add Play screen widgets",
@@ -57,36 +58,38 @@ const permissionLabels: Record<
     description:
       "Start a profile, optionally joining a server, from a button action.",
   },
-  "game.mods.install": {
-    label: "Install Minecraft game mods",
-    description:
-      "Import selected JARs or install a bundled JAR into a loader profile. The game loads JAR code on its next start.",
-  },
   "launcher.features.manage": {
     label: "Manage optional launcher features",
     description:
       "Control the documented news, effects, ads, and CurseForge options.",
   },
   "launcher.performance.read": {
-    label: "Read mod API performance",
-    description: "Read mod API request and latency samples.",
+    label: "Read extension API performance",
+    description: "Read extension API request and latency samples.",
   },
   "storage.mod": {
-    label: "Save mod settings",
-    description: "Store JSON data owned by this mod.",
+    label: "Save extension settings",
+    description: "Store JSON data owned by this extension.",
   },
   "events.publish": {
-    label: "Send mod events",
-    description: "Publish namespaced events for other mods.",
+    label: "Send extension events",
+    description: "Publish namespaced events for other extensions.",
   },
   "events.subscribe": {
-    label: "Receive mod events",
-    description: "Listen for namespaced events from other mods.",
+    label: "Receive extension events",
+    description: "Listen for namespaced events from other extensions.",
   },
   "network.http": {
     label: "Connect to web APIs",
-    description: "Send HTTPS requests to mod services. Requests and responses are size-limited.",
+    description: "Send HTTPS requests to extension services. Requests and responses are size-limited.",
   },
+  "launcher.notifications": { label: "Show launcher notifications", description: "Display notices inside the launcher." },
+  "launcher.openExternal": { label: "Open external links", description: "Open web and mail links from a user action." },
+  "system.clipboard": { label: "Read and write clipboard", description: "Access clipboard text." },
+  "system.dialog": { label: "Show file and confirmation dialogs", description: "Ask the user to pick a file/folder, choose an output path, or confirm an action." },
+  "system.files": { label: "Access files on this PC", description: "Read, create, modify, move, copy, and delete files using absolute paths." },
+  "system.process": { label: "Open files and applications", description: "Open files or folders with the operating system." },
+  "launcher.windows": { label: "Open standalone windows", description: "Show this extension's registered pages in separate windows." },
 };
 
 const statePresentation: Record<
@@ -246,14 +249,14 @@ export function NoLoaderManagerPage() {
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-200/70">
-              <Code2 className="h-4 w-4" aria-hidden="true" /> Launcher mods
+              <Code2 className="h-4 w-4" aria-hidden="true" /> Client extensions
             </div>
             <h1 className="font-smallcaps text-3xl tracking-wide text-white">
               NoLoader
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-white/55">
               Add launcher pages, widgets, quick actions, themes, and profile
-              tools with mods.
+              tools with extensions.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -263,7 +266,7 @@ export function NoLoaderManagerPage() {
               disabled={!modsDirectory}
               className="inline-flex h-10 items-center gap-2 rounded-md border border-white/10 bg-black/20 px-3 text-sm text-white/75 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <FolderOpen className="h-4 w-4" aria-hidden="true" /> Open mods
+              <FolderOpen className="h-4 w-4" aria-hidden="true" /> Open extensions
               folder
             </button>
             <button
@@ -300,6 +303,7 @@ export function NoLoaderManagerPage() {
           />
         </div>
 
+
         {(error || settingsError || actionError) && (
           <div
             role="alert"
@@ -312,7 +316,7 @@ export function NoLoaderManagerPage() {
             <div>
               <p className="font-medium">
                 {error
-                  ? "NoLoader could not scan installed mods"
+                  ? "NoLoader could not scan installed extensions"
                   : settingsError
                     ? "Settings could not be saved safely"
                     : "Action failed"}
@@ -345,8 +349,8 @@ export function NoLoaderManagerPage() {
                 {error
                   ? "Open NoLoader in the desktop launcher to read or change this setting."
                   : safeMode
-                    ? "No launcher mods are started. Their individual enabled settings are preserved."
-                    : "Pause launcher mod startup if a mod is preventing the launcher from working."}
+                    ? "No extensions are started. Their individual enabled settings are preserved."
+                    : "Pause extension startup if an extension is preventing the launcher from working."}
               </p>
             </div>
           </div>
@@ -369,7 +373,7 @@ export function NoLoaderManagerPage() {
             ) : (
               <Power className="h-4 w-4" aria-hidden="true" />
             )}
-            {safeMode ? "Resume launcher mods" : "Pause launcher mods"}
+            {safeMode ? "Resume extensions" : "Pause extensions"}
           </button>
         </div>
 
@@ -378,7 +382,7 @@ export function NoLoaderManagerPage() {
             <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
               <div>
                 <h2 className="text-sm font-semibold text-white">
-                  Installed mods
+                  Installed extensions
                 </h2>
                 <p className="mt-1 text-xs text-white/45">
                   {matchingMods.length} shown · dependency order
@@ -394,7 +398,7 @@ export function NoLoaderManagerPage() {
                   className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35"
                   aria-hidden="true"
                 />
-                <span className="sr-only">Search mods</span>
+                <span className="sr-only">Search extensions</span>
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -403,7 +407,7 @@ export function NoLoaderManagerPage() {
                 />
               </label>
               <label>
-                <span className="sr-only">Filter mods by status</span>
+                <span className="sr-only">Filter extensions by status</span>
                 <select
                   value={statusFilter}
                   onChange={(event) =>
@@ -427,7 +431,7 @@ export function NoLoaderManagerPage() {
                   directory={modsDirectory}
                 />
               ) : (
-                <ul className="space-y-1" aria-label="Installed mods">
+                <ul className="space-y-1" aria-label="Installed extensions">
                   {matchingMods.length === 0 ? (
                     <li className="flex min-h-48 flex-col items-center justify-center px-6 text-center">
                       <Search
@@ -435,7 +439,7 @@ export function NoLoaderManagerPage() {
                         aria-hidden="true"
                       />
                       <p className="text-sm font-medium text-white/70">
-                        No matching mods
+                        No matching extensions
                       </p>
                       <p className="mt-1 text-xs text-white/40">
                         Try a different search or status filter.
@@ -530,7 +534,7 @@ export function NoLoaderManagerPage() {
               <div className="flex min-h-[300px] flex-col items-center justify-center p-8 text-center text-white/50">
                 <Blocks className="mb-3 h-8 w-8" aria-hidden="true" />
                 <p className="text-sm">
-                  Select a mod to inspect its manifest and status.
+                  Select an extension to inspect its manifest and status.
                 </p>
               </div>
             )}
@@ -540,7 +544,7 @@ export function NoLoaderManagerPage() {
         <footer className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-white/35">
           <span className="inline-flex items-center gap-2">
             <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
-            Launcher mods run in isolated workers with permission-based API
+            Extensions run in isolated workers with permission-based API
             access.
           </span>
           {modsDirectory && (
@@ -578,9 +582,9 @@ export function NoLoaderExtensionPage() {
       <div className="flex h-full items-center justify-center p-8 text-white">
         <div className="max-w-md rounded-lg border border-white/10 bg-[#0d121a]/90 p-6">
           <CircleX className="mb-3 h-6 w-6 text-amber-200" aria-hidden="true" />
-          <h1 className="text-lg font-semibold">Mod page unavailable</h1>
+          <h1 className="text-lg font-semibold">Extension page unavailable</h1>
           <p className="mt-2 text-sm text-white/55">
-            This page is not registered by a running mod. It may have been
+            This page is not registered by a running extension. It may have been
             disabled or failed to load.
           </p>
           <button
@@ -611,7 +615,7 @@ export function NoLoaderExtensionPage() {
           <div>
             <p className="mb-1 text-xs text-white/40">
               {mod.manifest.name} <span aria-hidden="true">/</span>{" "}
-              {navLabel ?? "Mod page"}
+              {navLabel ?? "Extension page"}
             </p>
             <h1 className="font-smallcaps text-3xl tracking-wide">
               {registered.page.title}
@@ -629,6 +633,15 @@ export function NoLoaderExtensionPage() {
       </div>
     </div>
   );
+}
+
+export function NoLoaderDetachedWindowPage() {
+  const { modId = "", pageId = "" } = useParams();
+  const { mods, pages, sendAction } = useNoLoader();
+  const mod = mods.find((entry) => entry.manifest?.id === modId && entry.state === "loaded");
+  const registered = pages.find((entry) => entry.modId === modId && entry.page.id === pageId);
+  if (!registered || !mod?.manifest) return <div className="flex h-screen items-center justify-center bg-[#090d13] p-8 text-white/70">This extension page is unavailable.</div>;
+  return <div className="h-screen overflow-auto bg-[#090d13] p-6 text-white"><header className="mb-5 flex items-center justify-between border-b border-white/10 pb-3"><div><div className="text-xs text-white/40">{mod.manifest.name}</div><h1 className="text-lg font-semibold">{registered.page.title}</h1></div><button className="rounded border border-white/15 px-3 py-1 text-sm" onClick={() => void getCurrentWindow().close()}>Close</button></header><ModUiTree page={registered.page} styles={registered.styles} onAction={(action, value) => sendAction(modId, action, value)} /></div>;
 }
 
 function MetricCard({
@@ -668,9 +681,9 @@ function LoadingState() {
         className="mb-3 h-6 w-6 animate-spin text-sky-200"
         aria-hidden="true"
       />
-      <p className="text-sm">Scanning the NoLoader mods folder</p>
+      <p className="text-sm">Scanning the NoLoader extensions folder</p>
       <p className="mt-1 text-xs text-white/30">
-        Checking manifests and starting enabled launcher mods
+        Checking manifests and starting enabled extensions
       </p>
     </div>
   );
@@ -689,10 +702,10 @@ function EmptyState({
         <Blocks className="h-6 w-6" aria-hidden="true" />
       </span>
       <h3 className="text-sm font-semibold text-white/85">
-        No launcher mods installed
+        No extensions installed
       </h3>
       <p className="mt-2 max-w-sm text-xs leading-5 text-white/45">
-        Place an unpacked launcher mod folder containing{" "}
+        Place an unpacked extension folder containing{" "}
         <code className="rounded bg-white/[0.06] px-1 py-0.5 text-white/65">
           noloader.mod.json
         </code>{" "}
@@ -705,7 +718,7 @@ function EmptyState({
         className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-md border border-sky-300/25 bg-sky-300/[0.07] px-3 text-xs font-medium text-sky-100 hover:bg-sky-300/[0.12] focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300 disabled:opacity-40"
       >
         <FolderOpen className="h-4 w-4" aria-hidden="true" />
-        Open mods folder
+        Open extensions folder
       </button>
     </div>
   );
@@ -785,7 +798,7 @@ function ModDetails({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
-              Mod details
+            Extension details
             </p>
             <h2 className="mt-2 break-words text-xl font-semibold text-white">
               {manifest?.name ?? mod.directory}
@@ -816,7 +829,7 @@ function ModDetails({
         {mod.update && (
           <div className={`mt-3 rounded-md border px-3 py-2 text-xs ${mod.update.state === "available" ? "border-sky-200/20 bg-sky-300/[0.07] text-sky-100" : "border-white/[0.07] bg-black/15 text-white/50"}`}>
             {mod.update.state === "checking" && "Checking for updates…"}
-            {mod.update.state === "current" && "Mod is up to date."}
+            {mod.update.state === "current" && "Extension is up to date."}
             {mod.update.state === "error" && `Update check failed: ${mod.update.detail}`}
             {mod.update.state === "available" && (
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -841,12 +854,12 @@ function ModDetails({
             <Power className="h-4 w-4" aria-hidden="true" />
           )}
           {mod.enabled
-            ? "Disable launcher mod and restart"
-            : "Enable launcher mod and restart"}
+            ? "Disable extension and restart"
+            : "Enable extension and restart"}
         </button>
         {!manifest && (
           <p className="mt-2 text-[11px] text-white/35">
-            Invalid mods cannot be enabled until their manifest is corrected.
+            Invalid extensions cannot be enabled until their manifest is corrected.
           </p>
         )}
       </div>
@@ -961,7 +974,7 @@ function ModDetails({
               className="mt-0.5 h-3.5 w-3.5 shrink-0"
               aria-hidden="true"
             />
-            Launcher mods are third-party code. A worker protects the launcher
+            Extensions are third-party code. A worker protects the launcher
             UI boundary, but is not an operating-system sandbox.
           </p>
         </div>

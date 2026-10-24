@@ -9,6 +9,6 @@ yarn install --frozen-lockfile
 yarn sdk:quick-join-mod:build
 ```
 
-Copy this folder, including `dist/index.js`, `noloader.mod.json`, and `styles.css`, into the folder opened by **NoLoader → Open mods folder**. Then refresh NoLoader and enable **Quick Join Probe**. This package requires NoLoader API 2; older 1.0.1 clients report it as incompatible instead of showing an unknown-permission manifest error.
+Copy this folder, including `dist/index.js`, `noloader.mod.json`, and `styles.css`, into the folder opened by **NoLoader → Open extensions folder**. Then refresh NoLoader and enable **Quick Join Probe**. The sample uses NoLoader API 2 and works with current API 4 clients through the compatibility layer.
 
-The server display tracks the most recent multiplayer server started with NoRisk Quick Play. Joining a server manually inside Minecraft is not tracked yet. Game mods are Java JARs loaded by the profile's Fabric, Forge, Quilt, or NeoForge loader; they run in Minecraft and can change game behavior. Use mods you trust and match them to the profile's game version and loader. For a buildable Fabric client mod starter, see [`sdk/game-mod-template`](../game-mod-template/README.md).
+The server display tracks the most recent multiplayer server started with NoRisk Quick Play. Joining a server manually inside Minecraft is not tracked yet. This example is a NoRisk Client extension: it adds a launcher action that starts a profile and joins the saved server.

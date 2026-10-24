@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fs::{self, OpenOptions};
-use std::io::{Read, Seek, Write};
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
@@ -14,7 +14,6 @@ const MAX_MOD_STORAGE_VALUE_BYTES: usize = 64 * 1024;
 const MAX_MOD_STORAGE_KEY_BYTES: usize = 128;
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 const MAX_MOD_ASSET_BYTES: u64 = 2 * 1024 * 1024;
-const MAX_BUNDLED_GAME_MOD_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_MOD_DIRECTORIES: usize = 2048;
 const MAX_TOTAL_MANIFEST_BYTES: usize = 16 * 1024 * 1024;
 const MAX_UPDATE_MANIFEST_BYTES: usize = 64 * 1024;
@@ -69,6 +68,62 @@ pub struct ModHttpResponse {
     pub ok: bool,
     pub content_type: Option<String>,
     pub body: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModProcessRequest {
+    pub program: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModProcessResult {
+    pub code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[tauri::command]
+pub async fn noloader_process_run(request: ModProcessRequest) -> Result<ModProcessResult, String> {
+    use tokio::process::Command;
+    if request.program.trim().is_empty()
+        || request.program.len() > 4096
+        || request.args.len() > 128
+        || request.args.iter().any(|arg| arg.len() > 16 * 1024)
+        || request.env.len() > 64
+        || request
+            .env
+            .iter()
+            .any(|(k, v)| k.len() > 256 || v.len() > 16 * 1024)
+    {
+        return Err("Process request exceeds supported limits.".to_string());
+    }
+    let mut command = Command::new(&request.program);
+    command
+        .args(&request.args)
+        .envs(&request.env)
+        .kill_on_drop(true);
+    if let Some(cwd) = request.cwd {
+        command.current_dir(cwd);
+    }
+    let output = tokio::time::timeout(std::time::Duration::from_secs(60), command.output())
+        .await
+        .map_err(|_| "Process exceeded the 60-second time limit.".to_string())?
+        .map_err(|error| format!("Could not run process: {error}"))?;
+    if output.stdout.len() > 1024 * 1024 || output.stderr.len() > 1024 * 1024 {
+        return Err("Process output exceeds 1 MiB.".to_string());
+    }
+    Ok(ModProcessResult {
+        code: output.status.code(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
 }
 
 #[tauri::command]
@@ -394,124 +449,6 @@ pub fn noloader_record_last_played_server(
             played_at: chrono::Utc::now().to_rfc3339(),
         },
     )
-}
-
-#[tauri::command]
-pub async fn noloader_install_bundled_game_mod(
-    app: AppHandle,
-    mod_id: String,
-    mod_directory: String,
-    profile_id: String,
-    jar_path: String,
-) -> Result<String, String> {
-    if !is_valid_mod_id(&mod_id) {
-        return Err("Bundled game mod has an invalid launcher mod ID.".to_string());
-    }
-    if !is_safe_entry_point(&jar_path, &[".jar"]) {
-        return Err("Bundled game mod path must be a safe relative JAR path.".to_string());
-    }
-    let profile_id = uuid::Uuid::parse_str(&profile_id)
-        .map_err(|_| "Bundled game mod has an invalid profile ID.".to_string())?;
-    let (_, mods_directory) = ensure_mod_directories(&app)?;
-    let launcher_mod_directory = canonical_child_directory(&mods_directory, &mod_directory)?;
-    let manifest = read_limited_file(
-        &launcher_mod_directory,
-        Path::new("noloader.mod.json"),
-        MAX_MANIFEST_BYTES,
-    )?;
-    let manifest: serde_json::Value = serde_json::from_str(&manifest)
-        .map_err(|error| format!("Could not read launcher mod manifest: {error}"))?;
-    if manifest.get("id").and_then(serde_json::Value::as_str) != Some(mod_id.as_str()) {
-        return Err("Launcher mod ID does not match its installed manifest.".to_string());
-    }
-
-    let source_path = resolve_bundled_game_mod(&launcher_mod_directory, &jar_path)?;
-    let state = crate::state::state_manager::State::get()
-        .await
-        .map_err(|error| format!("Could not access launcher profiles: {error}"))?;
-    let profile = state
-        .profile_manager
-        .get_profile(profile_id)
-        .await
-        .map_err(|error| format!("Could not load the selected profile: {error}"))?;
-    if !matches!(
-        profile.loader.as_str(),
-        "fabric" | "forge" | "quilt" | "neoforge"
-    ) {
-        return Err("The selected profile needs Fabric, Forge, Quilt, or NeoForge.".to_string());
-    }
-    let game_mods_directory = state
-        .profile_manager
-        .get_profile_mods_path(&profile)
-        .map_err(|error| format!("Could not resolve the profile's game mods folder: {error}"))?;
-    fs::create_dir_all(&game_mods_directory)
-        .map_err(|error| format!("Could not create the profile's game mods folder: {error}"))?;
-    let game_mods_directory = game_mods_directory
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve the profile's game mods folder: {error}"))?;
-    let file_name = source_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| "Bundled game mod has an invalid filename.".to_string())?
-        .to_string();
-    if !is_valid_directory_name(&file_name) {
-        return Err("Bundled game mod filename contains unsupported characters.".to_string());
-    }
-    let destination = game_mods_directory.join(&file_name);
-    let copied_file_name = file_name.clone();
-    let duplicate_name = copied_file_name.clone();
-    let copy_result = tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let mut source = fs::File::open(&source_path)
-            .map_err(|error| format!("Could not open bundled game mod: {error}"))?;
-        let mut signature = [0; 4];
-        source
-            .read_exact(&mut signature)
-            .map_err(|error| format!("Bundled game mod is not a readable JAR: {error}"))?;
-        if signature != [b'P', b'K', 3, 4]
-            && signature != [b'P', b'K', 5, 6]
-            && signature != [b'P', b'K', 7, 8]
-        {
-            return Err("Bundled game mod is not a valid JAR archive.".to_string());
-        }
-        source
-            .rewind()
-            .map_err(|error| format!("Could not read bundled game mod: {error}"))?;
-        let mut destination_file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&destination)
-            .map_err(|error| {
-                if error.kind() == std::io::ErrorKind::AlreadyExists {
-                    format!(
-                        "A game mod named '{duplicate_name}' is already installed in this profile."
-                    )
-                } else {
-                    format!("Could not prepare the profile's game mods folder: {error}")
-                }
-            })?;
-        let copy_result = std::io::copy(
-            &mut source.take(MAX_BUNDLED_GAME_MOD_BYTES.saturating_add(1)),
-            &mut destination_file,
-        )
-        .and_then(|copied| {
-            if copied > MAX_BUNDLED_GAME_MOD_BYTES {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "bundled game mod exceeded the size limit while copying",
-                ));
-            }
-            destination_file.flush()
-        });
-        if let Err(error) = copy_result {
-            let _ = fs::remove_file(&destination);
-            return Err(format!("Could not install the bundled game mod: {error}"));
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|error| format!("Bundled game mod install task failed: {error}"))?;
-    copy_result?;
-    Ok(copied_file_name)
 }
 
 #[tauri::command]
@@ -904,44 +841,6 @@ fn read_limited_file(root: &Path, relative_path: &Path, limit: u64) -> Result<St
     }
 
     read_bounded_text(&canonical, limit, "mod file")
-}
-
-fn resolve_bundled_game_mod(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
-    if !is_safe_entry_point(relative_path, &[".jar"]) {
-        return Err("Bundled game mod path must be a safe relative JAR path.".to_string());
-    }
-    let mut current = root.to_path_buf();
-    let components = Path::new(relative_path).components().collect::<Vec<_>>();
-    for (index, component) in components.iter().enumerate() {
-        let Component::Normal(segment) = component else {
-            return Err("Bundled game mod path contains an unsupported component.".to_string());
-        };
-        current.push(segment);
-        let metadata = fs::symlink_metadata(&current)
-            .map_err(|error| format!("Could not inspect bundled game mod: {error}"))?;
-        if metadata.file_type().is_symlink() {
-            return Err("Bundled game mod path may not contain symbolic links.".to_string());
-        }
-        let is_last = index + 1 == components.len();
-        if is_last && !metadata.is_file() {
-            return Err("Bundled game mod must be a regular JAR file.".to_string());
-        }
-        if !is_last && !metadata.is_dir() {
-            return Err("Bundled game mod path contains a non-directory component.".to_string());
-        }
-        if is_last && metadata.len() > MAX_BUNDLED_GAME_MOD_BYTES {
-            return Err(format!(
-                "Bundled game mod exceeds the {MAX_BUNDLED_GAME_MOD_BYTES}-byte limit."
-            ));
-        }
-    }
-    let canonical = current
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve bundled game mod: {error}"))?;
-    if !canonical.starts_with(root) {
-        return Err("Bundled game mod resolves outside the launcher mod folder.".to_string());
-    }
-    Ok(canonical)
 }
 
 fn read_bounded_text(path: &Path, limit: u64, description: &str) -> Result<String, String> {

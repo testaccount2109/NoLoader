@@ -9,7 +9,8 @@
     "single_log_window_*",
     "updater",
     "chat_*",
-    "tester_window"
+    "tester_window",
+    "noloader_*"
   ],
   "permissions": [
     "core:default",
@@ -27,6 +28,7 @@
     "opener:allow-open-path",
     "opener:allow-reveal-item-in-dir",
     "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-image",
     "dialog:allow-open",
     "updater:default",
@@ -50,6 +52,7 @@
     {
       "identifier": "fs:scope",
       "allow": [
+        { "path": "**" },
         { "path": "$APPDATA" },
         { "path": "$APPDATA/**" },
         { "path": "$APPCONFIG" },

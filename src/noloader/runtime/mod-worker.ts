@@ -116,10 +116,26 @@ const api = Object.freeze({
   }),
   launcher: Object.freeze({
     launchProfile(request) { return requestApi("launcher.launchProfile", request); },
+    openExternal(url) { return requestApi("launcher.openExternal", { url }); },
   }),
-  gameMods: Object.freeze({
-    importFromPicker(profileId) { return requestApi("gameMods.importFromPicker", { profileId }); },
-    installBundled(profileId, jarPath) { return requestApi("gameMods.installBundled", { profileId, jarPath }); },
+  notifications: Object.freeze({ show(notification) { return requestApi("notifications.show", notification); } }),
+  clipboard: Object.freeze({ readText() { return requestApi("clipboard.readText"); }, writeText(text) { return requestApi("clipboard.writeText", { text }); } }),
+  dialogs: Object.freeze({
+    openFile(options) { return requestApi("dialogs.openFile", options); },
+    openDirectory() { return requestApi("dialogs.openDirectory"); },
+    saveFile(options) { return requestApi("dialogs.saveFile", options); },
+    confirm(title, message) { return requestApi("dialogs.confirm", { title, message }); },
+  }),
+  windows: Object.freeze({ openPage(options) { return requestApi("windows.openPage", options); }, close(id) { return requestApi("windows.close", { id }); } }),
+  system: Object.freeze({
+    files: Object.freeze({
+      readText(path) { return requestApi("files.readText", { path }); }, writeText(path, content) { return requestApi("files.writeText", { path, content }); },
+      readBinary(path) { return requestApi("files.readBinary", { path }); }, writeBinary(path, base64) { return requestApi("files.writeBinary", { path, base64 }); },
+      listDirectory(path) { return requestApi("files.listDirectory", { path }); }, createDirectory(path, recursive) { return requestApi("files.createDirectory", { path, recursive }); },
+      remove(path, recursive) { return requestApi("files.remove", { path, recursive }); }, copy(source, destination) { return requestApi("files.copy", { source, destination }); },
+      move(source, destination) { return requestApi("files.move", { source, destination }); }, exists(path) { return requestApi("files.exists", { path }); },
+    }),
+    process: Object.freeze({ run(request) { return requestApi("process.run", request); }, open(path) { return requestApi("process.open", { path }); } }),
   }),
   updates: Object.freeze({
     check() { return requestApi("updates.check"); },

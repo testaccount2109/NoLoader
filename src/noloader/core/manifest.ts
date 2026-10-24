@@ -1,6 +1,6 @@
 export const MANIFEST_SCHEMA_VERSION = 1;
-export const NOLOADER_API_VERSION = 3;
-export const SUPPORTED_NOLOADER_API_VERSIONS = [1, 2, 3] as const;
+export const NOLOADER_API_VERSION = 4;
+export const SUPPORTED_NOLOADER_API_VERSIONS = [1, 2, 3, 4] as const;
 export const MOD_MANIFEST_FILE = "noloader.mod.json";
 export const MAX_MANIFEST_BYTES = 256 * 1024;
 
@@ -12,13 +12,19 @@ export const PERMISSION_IDS = [
   "launcher.profiles.read",
   "launcher.lastServer.read",
   "launcher.launch",
-  "game.mods.install",
   "launcher.features.manage",
   "launcher.performance.read",
   "storage.mod",
   "events.publish",
   "events.subscribe",
   "network.http",
+  "launcher.notifications",
+  "launcher.openExternal",
+  "system.clipboard",
+  "system.dialog",
+  "system.files",
+  "system.process",
+  "launcher.windows",
 ] as const;
 
 export type PermissionId = (typeof PERMISSION_IDS)[number];
@@ -627,7 +633,7 @@ function readPermissions(
   value: Record<string, unknown>,
   issues: ManifestIssue[],
 ): PermissionId[] | undefined {
-  const permissions = readStringArray(value, "permissions", issues, 16, false);
+  const permissions = readStringArray(value, "permissions", issues, 32, false);
   permissions?.forEach((permission, index) => {
     if (!PERMISSION_SET.has(permission)) {
       issues.push({

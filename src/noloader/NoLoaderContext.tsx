@@ -10,6 +10,12 @@ import {
   type ReactNode,
 } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { readText as readClipboardText, writeText as writeClipboardText } from "@tauri-apps/plugin-clipboard-manager";
+import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { readDir, readFile, readTextFile, writeFile, writeTextFile, mkdir, remove, copyFile, rename, exists, stat } from "@tauri-apps/plugin-fs";
+import { toast } from "react-hot-toast";
+import { open as openDialog, save as saveDialog, confirm as confirmDialog } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import * as ProfileService from "../services/profile-service";
 import { launch as launchProfile } from "../services/process-service";
@@ -60,6 +66,17 @@ const MAX_PAGES_PER_MOD = 32;
 const MAX_HOME_WIDGETS_PER_MOD = 8;
 const MAX_NAVIGATION_ITEMS_PER_MOD = 32;
 const MAX_GLOBAL_STYLESHEET_BYTES = 96 * 1024;
+const clampDimension = (value: unknown, fallback: number, min: number) => typeof value === "number" && Number.isFinite(value) ? Math.min(2400, Math.max(min, Math.round(value))) : fallback;
+function validateDialogFilters(value: unknown): Array<{ name: string; extensions: string[] }> | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 16) throw new Error("Dialog filters must be an array of at most 16 entries.");
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object") throw new Error("Dialog filter is invalid.");
+    const filter = entry as { name?: unknown; extensions?: unknown };
+    if (typeof filter.name !== "string" || filter.name.length > 80 || !Array.isArray(filter.extensions) || filter.extensions.length > 32 || filter.extensions.some((ext) => typeof ext !== "string" || !/^[a-zA-Z0-9*._-]{1,20}$/.test(ext))) throw new Error("Dialog filter is invalid.");
+    return { name: filter.name, extensions: filter.extensions as string[] };
+  });
+}
 
 export type ModLifecycleState =
   | "discovered"
@@ -191,6 +208,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
   const navigationRegistry = useRef(new Map<string, RegisteredModNavigation>());
   const homeWidgetRegistry = useRef(new Map<string, RegisteredModHomeWidget>());
   const globalStyleRegistry = useRef(new Map<string, HTMLStyleElement>());
+  const extensionWindows = useRef(new Map<string, Set<string>>());
   const failWorkerRef = useRef<(modId: string, message: string) => void>(
     () => undefined,
   );
@@ -223,6 +241,10 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
   );
 
   const clearRegistrations = useCallback((modId: string) => {
+    for (const label of extensionWindows.current.get(modId) ?? []) {
+      void WebviewWindow.getByLabel(label).then((child) => child?.close()).catch(() => undefined);
+    }
+    extensionWindows.current.delete(modId);
     for (const [key, entry] of pageRegistry.current) {
       if (entry.modId === modId) pageRegistry.current.delete(key);
     }
@@ -599,67 +621,6 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
             respond(true, server);
             return;
           }
-          case "gameMods.importFromPicker": {
-            requirePermission("game.mods.install");
-            requireUserAction(true);
-            const payload = message.payload as Record<string, unknown> | undefined;
-            const profileId = payload?.profileId;
-            if (typeof profileId !== "string" || profileId.length > 64) {
-              throw new Error("Game mod import request has an invalid profile ID.");
-            }
-            const [response, standard] = await Promise.all([
-              ProfileService.getAllProfilesAndLastPlayed(),
-              ProfileService.getStandardProfiles(),
-            ]);
-            const profile = [...standard.profiles, ...response.all_profiles].find(
-              (entry) => entry.id === profileId,
-            );
-            if (!profile) {
-              throw new Error("The requested launcher profile does not exist.");
-            }
-            if (!["fabric", "forge", "quilt", "neoforge"].includes(profile.loader.toLowerCase())) {
-              throw new Error("Install a game mod loader for this profile before importing game mods.");
-            }
-            await invoke<void>("import_local_mods", { profileId });
-            respond(true);
-            return;
-          }
-          case "gameMods.installBundled": {
-            requirePermission("game.mods.install");
-            requireUserAction(true);
-            const payload = message.payload as Record<string, unknown> | undefined;
-            const profileId = payload?.profileId;
-            const jarPath = payload?.jarPath;
-            if (typeof profileId !== "string" || profileId.length > 64) {
-              throw new Error("Bundled game mod request has an invalid profile ID.");
-            }
-            if (typeof jarPath !== "string" || jarPath.length > 240) {
-              throw new Error("Bundled game mod request has an invalid JAR path.");
-            }
-            const [response, standard] = await Promise.all([
-              ProfileService.getAllProfilesAndLastPlayed(),
-              ProfileService.getStandardProfiles(),
-            ]);
-            const profile = [...standard.profiles, ...response.all_profiles].find(
-              (entry) => entry.id === profileId,
-            );
-            if (!profile) {
-              throw new Error("The requested launcher profile does not exist.");
-            }
-            if (!["fabric", "forge", "quilt", "neoforge"].includes(profile.loader.toLowerCase())) {
-              throw new Error("Install a game mod loader for this profile before installing bundled game mods.");
-            }
-            const runtime = workers.current.get(modId);
-            if (!runtime) throw new Error("The launcher mod is no longer running.");
-            const installedFile = await invoke<string>("noloader_install_bundled_game_mod", {
-              modId,
-              modDirectory: runtime.directory,
-              profileId,
-              jarPath,
-            });
-            respond(true, installedFile);
-            return;
-          }
           case "updates.check": {
             const updateFeed = runtime.manifest.updates;
             if (!updateFeed) {
@@ -724,6 +685,90 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
             });
             respond(true, response);
             return;
+          }
+          case "launcher.openExternal": {
+            requirePermission("launcher.openExternal");
+            const url = (message.payload as { url?: unknown } | undefined)?.url;
+            if (typeof url !== "string" || url.length > 4096) throw new Error("URL is invalid.");
+            const parsed = new URL(url);
+            if (!["https:", "http:", "mailto:"].includes(parsed.protocol)) throw new Error("Only web and mail links are allowed.");
+            requireUserAction(false); await openUrl(url); respond(true); return;
+          }
+          case "notifications.show": {
+            requirePermission("launcher.notifications");
+            const p = message.payload as { title?: unknown; body?: unknown; kind?: unknown };
+            if (!p || typeof p.title !== "string" || p.title.length > 120 || (p.body !== undefined && (typeof p.body !== "string" || p.body.length > 500))) throw new Error("Notification is invalid.");
+            const msg = `${p.title}${p.body ? `: ${p.body}` : ""}`;
+            p.kind === "error" ? toast.error(msg) : p.kind === "success" ? toast.success(msg) : toast(msg);
+            respond(true); return;
+          }
+          case "clipboard.readText": { requirePermission("system.clipboard"); respond(true, await readClipboardText()); return; }
+          case "clipboard.writeText": {
+            requirePermission("system.clipboard"); const text = (message.payload as { text?: unknown } | undefined)?.text;
+            if (typeof text !== "string" || text.length > 1_000_000) throw new Error("Clipboard text is invalid or too large.");
+            await writeClipboardText(text); respond(true); return;
+          }
+          case "dialogs.openFile": case "dialogs.openDirectory": case "dialogs.saveFile": case "dialogs.confirm": {
+            requirePermission("system.dialog"); requireUserAction(false);
+            const p = (message.payload ?? {}) as { multiple?: unknown; filters?: unknown; defaultPath?: unknown; title?: unknown; message?: unknown };
+            let value: unknown;
+            if (message.operation === "dialogs.openDirectory") value = await openDialog({ directory: true, multiple: false });
+            else if (message.operation === "dialogs.openFile") value = await openDialog({ directory: false, multiple: p.multiple === true, filters: validateDialogFilters(p.filters) });
+            else if (message.operation === "dialogs.saveFile") value = await saveDialog({ defaultPath: typeof p.defaultPath === "string" ? p.defaultPath : undefined, filters: validateDialogFilters(p.filters) });
+            else {
+              if (typeof p.title !== "string" || typeof p.message !== "string" || p.title.length > 120 || p.message.length > 1000) throw new Error("Confirmation dialog text is invalid.");
+              value = await confirmDialog(p.message, { title: p.title, kind: "warning" });
+            }
+            respond(true, value); return;
+          }
+          case "windows.openPage": {
+            requirePermission("launcher.windows");
+            const p = message.payload as { id?: unknown; title?: unknown; pageId?: unknown; width?: unknown; height?: unknown };
+            if (!p || typeof p.id !== "string" || !/^[a-zA-Z0-9_-]{1,48}$/.test(p.id) || typeof p.title !== "string" || p.title.length > 100 || typeof p.pageId !== "string" || !pageRegistry.current.has(registrationKey(modId, p.pageId))) throw new Error("Window must reference a registered page from this extension.");
+            const label = `noloader_${modId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${p.id}`;
+            const existing = await WebviewWindow.getByLabel(label);
+            if (existing) { await existing.setFocus(); respond(true, label); return; }
+            const url = new URL(window.location.href); url.hash = `#/noloader-window/${encodeURIComponent(modId)}/${encodeURIComponent(p.pageId)}`;
+            const child = new WebviewWindow(label, { url: url.toString(), title: p.title, width: clampDimension(p.width, 900, 480), height: clampDimension(p.height, 640, 320), resizable: true, focus: true });
+            child.once("tauri://error", (event) => console.error("NoLoader window error", event));
+            const labels = extensionWindows.current.get(modId) ?? new Set<string>(); labels.add(label); extensionWindows.current.set(modId, labels);
+            respond(true, label); return;
+          }
+          case "windows.close": {
+            requirePermission("launcher.windows"); const id = (message.payload as { id?: unknown } | undefined)?.id;
+            if (typeof id !== "string" || !/^[a-zA-Z0-9_-]{1,48}$/.test(id)) throw new Error("Window ID is invalid.");
+            const child = await WebviewWindow.getByLabel(`noloader_${modId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${id}`);
+            if (child) await child.close(); extensionWindows.current.get(modId)?.delete(`noloader_${modId.replace(/[^a-zA-Z0-9_-]/g, "_")}_${id}`); respond(true); return;
+          }
+          case "files.readText": case "files.writeText": case "files.readBinary": case "files.writeBinary": case "files.listDirectory": case "files.createDirectory": case "files.remove": case "files.copy": case "files.move": case "files.exists": {
+            requirePermission("system.files"); const p = message.payload as Record<string, unknown>;
+            const path = (key: string) => { const value = p?.[key]; if (typeof value !== "string" || !value.trim() || value.length > 4096) throw new Error(`Invalid file path (${key}).`); return value; };
+            switch (message.operation) {
+              case "files.readText": { const filePath = path("path"); if ((await stat(filePath)).size > 8 * 1024 * 1024) throw new Error("File exceeds 8 MiB."); respond(true, await readTextFile(filePath)); break; }
+              case "files.writeText": { if (typeof p.content !== "string" || p.content.length > 8 * 1024 * 1024) throw new Error("Text content is invalid or exceeds 8 MiB."); await writeTextFile(path("path"), p.content); respond(true); break; }
+              case "files.readBinary": { const filePath = path("path"); if ((await stat(filePath)).size > 8 * 1024 * 1024) throw new Error("File exceeds 8 MiB."); const value = await readFile(filePath); let raw = ""; for (const byte of value) raw += String.fromCharCode(byte); respond(true, btoa(raw)); break; }
+              case "files.writeBinary": { if (typeof p.base64 !== "string" || p.base64.length > 11_200_000) throw new Error("Binary data is invalid or exceeds 8 MiB."); const raw = atob(p.base64); await writeFile(path("path"), Uint8Array.from(raw, char => char.charCodeAt(0))); respond(true); break; }
+              case "files.listDirectory": { const dir = path("path"); const entries = await readDir(dir); if (entries.length > 2000) throw new Error("Directory contains more than 2000 entries."); respond(true, await Promise.all(entries.map(async entry => { const full = `${dir.replace(/[\\/]$/, "")}/${entry.name}`; let size = 0; try { size = (await stat(full)).size; } catch {} return { name: entry.name, path: full, kind: entry.isDirectory ? "directory" : entry.isFile ? "file" : "other", size }; }))); break; }
+              case "files.createDirectory": await mkdir(path("path"), { recursive: p.recursive === true }); respond(true); break;
+              case "files.remove": await remove(path("path"), { recursive: p.recursive === true }); respond(true); break;
+              case "files.copy": await copyFile(path("source"), path("destination")); respond(true); break;
+              case "files.move": await rename(path("source"), path("destination")); respond(true); break;
+              default: respond(true, await exists(path("path")));
+            } return;
+          }
+          case "process.open": {
+            requirePermission("system.process"); const path = (message.payload as { path?: unknown } | undefined)?.path;
+            if (typeof path !== "string" || !path.trim() || path.length > 4096) throw new Error("Path is invalid.");
+            await openPath(path); respond(true); return;
+          }
+          case "process.run": {
+            requirePermission("system.process");
+            const p = message.payload as { program?: unknown; args?: unknown; cwd?: unknown; env?: unknown };
+            if (!p || typeof p.program !== "string" || p.program.length > 4096 || (p.args !== undefined && (!Array.isArray(p.args) || p.args.some(arg => typeof arg !== "string")))) throw new Error("Process request is invalid.");
+            const env = p.env === undefined ? {} : p.env;
+            if (!env || typeof env !== "object" || Array.isArray(env) || Object.entries(env).some(([k,v]) => typeof v !== "string" || k.length > 256 || v.length > 16384)) throw new Error("Process environment must be a string map.");
+            const result = await invoke("noloader_process_run", { request: { program: p.program, args: p.args ?? [], cwd: p.cwd, env } });
+            respond(true, result); return;
           }
           case "performance.getSnapshot": {
             requirePermission("launcher.performance.read");

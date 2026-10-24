@@ -4,7 +4,6 @@
   "workspaces": [
     "sdk/hello-mod",
     "sdk/quick-join-mod",
-    "sdk/game-mod-import",
     "sdk/performance-mod"
   ],
   "version": "0.1.0",
@@ -17,7 +16,6 @@
     "test:noloader": "yarn sdk:hello-mod:build && yarn sdk:quick-join-mod:build && tsx src/noloader/core.test.ts",
     "sdk:hello-mod:build": "yarn workspace @noloader/hello-mod build",
     "sdk:quick-join-mod:build": "yarn workspace @noloader/quick-join-mod build",
-    "sdk:game-mod-import:build": "yarn workspace @noloader/game-mod-import build",
     "sdk:performance-mod:build": "yarn workspace @noloader/performance-mod build",
     "preview": "vite preview",
     "tauri": "tauri",

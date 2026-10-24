@@ -16,9 +16,11 @@ import { SyncPacksPage } from "../components/sync-packs/SyncPacksPage";
 import {
   NoLoaderExtensionPage,
   NoLoaderManagerPage,
+  NoLoaderDetachedWindowPage,
 } from "../noloader/NoLoaderPages";
 
 export const router = createHashRouter([
+  { path: "/noloader-window/:modId/:pageId", element: <NoLoaderDetachedWindowPage /> },
   {
     path: "/",
     element: <App />,
