@@ -653,13 +653,25 @@ export function NoLoaderBlankWindowPage() {
       const source = localStorage.getItem(key);
       if (!source) return;
       localStorage.removeItem(key);
-      const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+      const runtimes = (globalThis as typeof globalThis & { __NOLOADER_EXTENSION_RUNTIMES__?: Map<string, { signal: AbortSignal; onDispose(cleanup: () => void | Promise<void>): () => void; dispose(): void }> }).__NOLOADER_EXTENSION_RUNTIMES__ ??= new Map();
+      let runtime = runtimes.get(modId);
+      if (!runtime) {
+        const controller = new AbortController();
+        const cleanups = new Set<() => void | Promise<void>>();
+        runtime = { signal: controller.signal, onDispose(cleanup) { cleanups.add(cleanup); return () => cleanups.delete(cleanup); }, dispose() { controller.abort(); for (const cleanup of cleanups) { try { Promise.resolve(cleanup()).catch(console.error); } catch (error) { console.error(error); } } cleanups.clear(); } };
+        runtimes.set(modId, runtime);
+      }
+      const moduleSource = `const noLoaderExtension = globalThis.__NOLOADER_EXTENSION_RUNTIMES__.get(${JSON.stringify(modId)});\n${source}`;
+      const url = URL.createObjectURL(new Blob([moduleSource], { type: "text/javascript" }));
       void import(/* @vite-ignore */ url).catch((error) => console.error("[NoLoader extension module]", error)).finally(() => URL.revokeObjectURL(url));
     };
     const onStorage = (event: StorageEvent) => { if (event.key === key) execute(); };
     window.addEventListener("storage", onStorage);
     execute();
-    return () => window.removeEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      (globalThis as typeof globalThis & { __NOLOADER_EXTENSION_RUNTIMES__?: Map<string, { dispose(): void }> }).__NOLOADER_EXTENSION_RUNTIMES__?.get(modId)?.dispose();
+    };
   }, [modId, windowId]);
   return <main id="noloader-extension-root" data-extension={modId} data-window={windowId} className="h-screen overflow-auto bg-[#090d13] text-white" />;
 }

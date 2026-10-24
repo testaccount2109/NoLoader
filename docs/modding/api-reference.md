@@ -1,4 +1,4 @@
-# NoLoader extension API, version 3
+# NoLoader extension API, version 5
 
 An extension exports `activate(api)` from its bundled ES module. It runs in an isolated Web Worker and communicates with NoRisk Client through a private host channel. The public TypeScript declarations are in [`sdk/types/no-loader.d.ts`](../../sdk/types/no-loader.d.ts).
 
@@ -10,16 +10,21 @@ Request `ui.globalStyles` to use `api.theme.registerGlobalStyles(css)` or `updat
 
 `api.windows.openPage({ id, title, pageId, width?, height? })` requires `launcher.windows` and opens a registered page in its own desktop window. `api.windows.open({ id, title, width?, height? })` opens a blank extension-owned webview outside the main launcher UI; `api.windows.close(id)` closes that extension's window.
 
-`api.client.execute(source, windowId?)` requires `launcher.clientRuntime`. It schedules a self-contained JavaScript ES module (up to 8 MiB) in the main NoRisk Client webview, or in an extension-owned standalone window when `windowId` is supplied. This code runs in the real client renderer with direct DOM access and full webview context; it can replace any launcher UI or modify client runtime behavior. Bundle all module dependencies into `source`. This capability intentionally removes the UI descriptor restrictions and is equivalent to trusting native client code. Errors are reported to the target webview console.
+`api.client.execute(source, windowId?)` requires `launcher.clientRuntime`. It schedules a self-contained JavaScript ES module (up to 8 MiB) in the main NoRisk Client webview, or in an extension-owned standalone window when `windowId` is supplied. This code runs in the real client renderer with direct DOM access and full webview context; it can replace any launcher UI or modify client runtime behavior. Bundle all module dependencies into `source`. The module receives a `noLoaderExtension` context with an `AbortSignal` and `onDispose(cleanup)`; cleanup runs when the extension is disabled, fails, or is reloaded. Register listeners, observers, timers, and created DOM nodes for cleanup. This capability removes the UI descriptor restrictions and is equivalent to trusting client code. Errors are reported to the target webview console.
 
 ```ts
 const windowId = await api.windows.open({ id: "dashboard", title: "My dashboard" });
 await api.client.execute(`
   const root = document.querySelector("#noloader-extension-root");
   root.innerHTML = "<h1>Custom dashboard</h1><button id='refresh'>Refresh</button>";
-  root.querySelector("#refresh").addEventListener("click", () => location.reload());
+  const button = root.querySelector("#refresh");
+  const onRefresh = () => location.reload();
+  button.addEventListener("click", onRefresh);
+  noLoaderExtension.onDispose(() => { button.removeEventListener("click", onRefresh); root.replaceChildren(); });
 `, windowId);
 ```
+
+The SDK types declare `noLoaderExtension` globally for modules executed this way. Use its signal for cancellable work and `onDispose` for timers, observers, event listeners, and other resources. Modules loaded into standalone windows are disposed when their extension-owned window closes; modules in the main client are disposed when the extension stops or reloads.
 
 ## Launcher data and controls
 

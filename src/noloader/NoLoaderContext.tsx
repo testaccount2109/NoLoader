@@ -241,6 +241,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
   );
 
   const clearRegistrations = useCallback((modId: string) => {
+    void invoke("noloader_dispose_client_code", { modId }).catch(() => undefined);
     for (const label of extensionWindows.current.get(modId) ?? []) {
       void WebviewWindow.getByLabel(label).then((child) => child?.close()).catch(() => undefined);
     }

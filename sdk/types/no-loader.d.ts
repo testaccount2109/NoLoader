@@ -124,6 +124,18 @@ export interface ModProcessResult {
   stderr: string;
 }
 
+export interface ClientRuntimeContext {
+  /** Aborted when the extension is disabled, fails, or is reloaded. */
+  signal: AbortSignal;
+  /** Register cleanup for listeners, observers, timers, and DOM nodes created by this module. */
+  onDispose(cleanup: () => void | Promise<void>): () => void;
+}
+
+declare global {
+  /** Available to modules passed to `api.client.execute`. */
+  const noLoaderExtension: ClientRuntimeContext;
+}
+
 export interface LaunchProfileRequest {
   profileId: string;
   serverAddress?: string;
@@ -180,7 +192,7 @@ export interface NoLoaderApi {
     close(id: string): Promise<void>;
   };
   client: {
-    /** Executes an ES module in the selected NoRisk Client webview. Requires the full client runtime permission. */
+    /** Executes an ES module in the selected NoRisk Client webview. The module receives `noLoaderExtension` with a lifecycle signal and cleanup registration. Requires the full client runtime permission. */
     execute(source: string, windowId?: string): Promise<void>;
   };
   system: {

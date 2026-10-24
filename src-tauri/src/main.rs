@@ -596,6 +596,7 @@ async fn main() {
             noriskclient_launcher_v3_lib::noloader::noloader_process_run,
             noriskclient_launcher_v3_lib::noloader::noloader_process_spawn,
             noriskclient_launcher_v3_lib::noloader::noloader_execute_client_code,
+            noriskclient_launcher_v3_lib::noloader::noloader_dispose_client_code,
             noriskclient_launcher_v3_lib::noloader::noloader_fetch_update_manifest,
             noriskclient_launcher_v3_lib::noloader::noloader_set_mod_enabled,
             noriskclient_launcher_v3_lib::noloader::noloader_set_safe_mode,

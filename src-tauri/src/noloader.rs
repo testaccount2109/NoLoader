@@ -132,14 +132,33 @@ pub fn noloader_execute_client_code(
     let webview = app
         .get_webview_window("main")
         .ok_or_else(|| "The NoRisk Client main webview is not open.".to_string())?;
+    let encoded_id = serde_json::to_string(&mod_id)
+        .map_err(|error| format!("Could not encode extension ID: {error}"))?;
     let encoded = serde_json::to_string(&source)
         .map_err(|error| format!("Could not encode client module: {error}"))?;
     let script = format!(
-        "(() => {{ const source = {encoded}; const run = () => {{ if (!document.querySelector('#root')) {{ setTimeout(run, 40); return; }} const url = URL.createObjectURL(new Blob([source], {{ type: 'text/javascript' }})); import(url).catch(error => console.error('[NoLoader extension module]', error)).finally(() => URL.revokeObjectURL(url)); }}; run(); }})()"
+        "(() => {{ const modId = {encoded_id}; const source = {encoded}; const run = () => {{ if (!document.querySelector('#root')) {{ setTimeout(run, 40); return; }} const runtimes = globalThis.__NOLOADER_EXTENSION_RUNTIMES__ ??= new Map(); let runtime = runtimes.get(modId); if (!runtime) {{ const controller = new AbortController(); const cleanups = new Set(); runtime = {{ signal: controller.signal, onDispose(cleanup) {{ if (typeof cleanup !== 'function') throw new TypeError('Cleanup must be a function.'); cleanups.add(cleanup); return () => cleanups.delete(cleanup); }}, dispose() {{ controller.abort(); for (const cleanup of cleanups) {{ try {{ Promise.resolve(cleanup()).catch(error => console.error('[NoLoader extension cleanup]', error)); }} catch (error) {{ console.error('[NoLoader extension cleanup]', error); }} }} cleanups.clear(); }} }}; runtimes.set(modId, runtime); }} const moduleSource = 'const noLoaderExtension = globalThis.__NOLOADER_EXTENSION_RUNTIMES__.get(' + JSON.stringify(modId) + ');\\n' + source; const url = URL.createObjectURL(new Blob([moduleSource], {{ type: 'text/javascript' }})); import(url).catch(error => console.error('[NoLoader extension module]', error)).finally(() => URL.revokeObjectURL(url)); }}; run(); }})()"
     );
     webview
         .eval(&script)
         .map_err(|error| format!("Could not execute client module: {error}"))
+}
+
+#[tauri::command]
+pub fn noloader_dispose_client_code(app: AppHandle, mod_id: String) -> Result<(), String> {
+    if !is_valid_mod_id(&mod_id) {
+        return Err("Extension ID is invalid.".to_string());
+    }
+    let webview = app
+        .get_webview_window("main")
+        .ok_or_else(|| "The NoRisk Client main webview is not open.".to_string())?;
+    let encoded = serde_json::to_string(&mod_id)
+        .map_err(|error| format!("Could not encode extension ID: {error}"))?;
+    webview
+        .eval(&format!(
+            "globalThis.__NOLOADER_EXTENSION_RUNTIMES__?.get({encoded})?.dispose(); globalThis.__NOLOADER_EXTENSION_RUNTIMES__?.delete({encoded})"
+        ))
+        .map_err(|error| format!("Could not dispose extension runtime: {error}"))
 }
 
 #[tauri::command]
