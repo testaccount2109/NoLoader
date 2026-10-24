@@ -6,7 +6,7 @@
   "description": "Imports local Java game mods into an existing loader profile.",
   "authors": ["NoLoader SDK"],
   "apiVersion": 2,
-  "launcherVersions": ["0.6.29"],
+  "launcherVersions": ["0.6.29", "0.6.30-noloader.1", "0.6.30-noloader.2"],
   "entrypoints": {
     "frontend": "dist/index.js"
   },

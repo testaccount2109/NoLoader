@@ -2,6 +2,12 @@
 
 An entry point exports `activate(api)`. No global launcher object is exposed. API calls use a private `MessagePort`, are validated by the host, and are available only to the extension module in its worker. Direct messages sent through the worker global are ignored.
 
+## Available mod features
+
+Launcher mods can add validated launcher pages, home widgets, navigation links, scoped or global themes, persistent mod-owned settings, and namespaced events for other mods. With explicit manifest permissions they can also read basic profile metadata, open a JAR picker for an installed game profile, start a profile from a button, or control the launcher's documented optional features. The [TypeScript declarations](../../sdk/types/no-loader.d.ts) describe the complete API surface.
+
+Enabled launcher mods start automatically when NoLoader starts. Minecraft game mods are Java JARs loaded by Fabric, Forge, Quilt, or NeoForge when a selected profile starts; installing one does not load code into a game that is already running. NoLoader does not provide an API for arbitrary client source patches or silent game-process injection. See [game mods](game-mods.md) for the separate Minecraft-side workflow.
+
 ## `api.registerPage(page)`
 
 Requires the `ui.pages` permission. `page` has `{ id, title, content }`. IDs use lowercase letters, digits, `_`, or `-`; titles are at most 80 characters. Content is a bounded tree of the component types documented below. The returned function unregisters the page and navigation items that point to it.
@@ -39,6 +45,26 @@ These calls use the same private request/response channel as the UI API. They ar
 - `api.features.setEnabled(featureId, enabled)` requires `launcher.features.manage`. Supported feature IDs are `curseforge.integration`, `launcher.news`, `launcher.effects` (animated player and background effects), and `launcher.ads`. Changes apply while the mod is enabled and are removed when it stops. When multiple mods set the same feature, a disabled value takes precedence.
 - `api.features.getSnapshot()` requires `launcher.features.manage` and returns the effective values for those four feature IDs.
 - `api.performance.getSnapshot()` requires `launcher.performance.read` and reports active extension count, API requests in the last minute, and sampled average/maximum API latency. It does not report whole-process CPU or memory usage.
+
+An extension can check the active feature values and set only a documented feature ID:
+
+```ts
+const features = await api.features.getSnapshot();
+api.features.setEnabled("launcher.effects", !features["launcher.effects"]);
+```
+
+The change applies while the mod is enabled and resets when it stops. To initiate a game action, connect it to a visible button and handle failures:
+
+```ts
+api.onAction(async (action) => {
+  if (action !== "open-mod-picker") return;
+  try {
+    await api.gameMods.importFromPicker(profileId);
+  } catch (error) {
+    console.error("Could not import game mods", error);
+  }
+});
+```
 
 An extension must call `launchProfile` and `gameMods.importFromPicker` while handling a NoLoader button action. The host uses a short-lived, single-use gesture token, so a mod cannot start Minecraft or open the game-mod picker during activation or later from a timer. Handle a rejected promise, for example when the account is signed out or the profile cannot start. A server address must be a host, optional port, or IPv6 address; it cannot contain whitespace or control characters.
 

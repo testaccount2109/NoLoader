@@ -12,6 +12,7 @@ import {
   LoaderCircle,
   Power,
   RefreshCw,
+  Search,
   ShieldAlert,
 } from "lucide-react";
 import { ModUiTree } from "./ModUiTree";
@@ -102,9 +103,40 @@ export function NoLoaderManagerPage() {
   const [pendingDirectory, setPendingDirectory] = useState<string>();
   const [safeModePending, setSafeModePending] = useState(false);
   const [actionError, setActionError] = useState<string>();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "running" | "attention" | "disabled"
+  >("all");
   const navigate = useNavigate();
+  const matchingMods = mods.filter((mod) => {
+    const query = search.trim().toLocaleLowerCase();
+    const matchesQuery =
+      !query ||
+      [
+        mod.manifest?.name,
+        mod.manifest?.id,
+        mod.manifest?.description,
+        mod.directory,
+      ].some((value) => value?.toLocaleLowerCase().includes(query));
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "running" && mod.state === "loaded") ||
+      (statusFilter === "disabled" && mod.state === "disabled") ||
+      (statusFilter === "attention" &&
+        [
+          "invalid",
+          "incompatible",
+          "blocked",
+          "conflict",
+          "duplicate-id",
+          "dependency-cycle",
+          "failed",
+        ].includes(mod.state));
+    return matchesQuery && matchesStatus;
+  });
   const selected =
-    mods.find((mod) => mod.directory === selectedDirectory) ?? mods[0];
+    matchingMods.find((mod) => mod.directory === selectedDirectory) ??
+    matchingMods[0];
   const loadedCount = mods.filter((mod) => mod.state === "loaded").length;
   const canToggle = Boolean(selected?.manifest) && !settingsError && !loading;
 
@@ -147,14 +179,14 @@ export function NoLoaderManagerPage() {
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-200/70">
-              <Code2 className="h-4 w-4" aria-hidden="true" /> Launcher
-              extensions
+              <Code2 className="h-4 w-4" aria-hidden="true" /> Launcher mods
             </div>
             <h1 className="font-smallcaps text-3xl tracking-wide text-white">
               NoLoader
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-white/55">
-              Manage extensions that add pages and navigation to this launcher.
+              Add launcher pages, widgets, quick actions, themes, and profile
+              tools with mods.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -279,15 +311,45 @@ export function NoLoaderManagerPage() {
             <div className="flex items-center justify-between border-b border-white/[0.08] px-5 py-4">
               <div>
                 <h2 className="text-sm font-semibold text-white">
-                  Installed extensions
+                  Installed mods
                 </h2>
                 <p className="mt-1 text-xs text-white/45">
-                  Mods start in a stable dependency order.
+                  {matchingMods.length} shown · dependency order
                 </p>
               </div>
               <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs text-white/55">
                 {mods.length}
               </span>
+            </div>
+            <div className="flex flex-wrap gap-2 border-b border-white/[0.08] p-3">
+              <label className="relative min-w-[180px] flex-1">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35"
+                  aria-hidden="true"
+                />
+                <span className="sr-only">Search mods</span>
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search name, ID, or description"
+                  className="h-9 w-full rounded-md border border-white/10 bg-black/20 pl-9 pr-3 text-xs text-white placeholder:text-white/30 focus:border-sky-300/40 focus:outline-none focus:ring-1 focus:ring-sky-300/30"
+                />
+              </label>
+              <label>
+                <span className="sr-only">Filter mods by status</span>
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as typeof statusFilter)
+                  }
+                  className="h-9 rounded-md border border-white/10 bg-[#111820] px-3 text-xs text-white/75 focus:border-sky-300/40 focus:outline-none focus:ring-1 focus:ring-sky-300/30"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="running">Running</option>
+                  <option value="disabled">Disabled</option>
+                  <option value="attention">Needs attention</option>
+                </select>
+              </label>
             </div>
             <div className="max-h-[min(58vh,620px)] min-h-[260px] overflow-y-auto custom-scrollbar p-2">
               {loading && mods.length === 0 ? (
@@ -298,15 +360,40 @@ export function NoLoaderManagerPage() {
                   directory={modsDirectory}
                 />
               ) : (
-                <ul className="space-y-1" aria-label="Installed extensions">
-                  {mods.map((mod) => (
-                    <ModListItem
-                      key={mod.directory}
-                      mod={mod}
-                      selected={selected?.directory === mod.directory}
-                      onSelect={() => setSelectedDirectory(mod.directory)}
-                    />
-                  ))}
+                <ul className="space-y-1" aria-label="Installed mods">
+                  {matchingMods.length === 0 ? (
+                    <li className="flex min-h-48 flex-col items-center justify-center px-6 text-center">
+                      <Search
+                        className="mb-3 h-6 w-6 text-white/30"
+                        aria-hidden="true"
+                      />
+                      <p className="text-sm font-medium text-white/70">
+                        No matching mods
+                      </p>
+                      <p className="mt-1 text-xs text-white/40">
+                        Try a different search or status filter.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearch("");
+                          setStatusFilter("all");
+                        }}
+                        className="mt-3 text-xs text-sky-200 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300"
+                      >
+                        Clear filters
+                      </button>
+                    </li>
+                  ) : (
+                    matchingMods.map((mod) => (
+                      <ModListItem
+                        key={mod.directory}
+                        mod={mod}
+                        selected={selected?.directory === mod.directory}
+                        onSelect={() => setSelectedDirectory(mod.directory)}
+                      />
+                    ))
+                  )}
                 </ul>
               )}
             </div>
@@ -386,7 +473,8 @@ export function NoLoaderManagerPage() {
         <footer className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-white/35">
           <span className="inline-flex items-center gap-2">
             <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />
-            Extensions run in separate workers with a limited launcher API.
+            Launcher mods run in isolated workers with permission-based API
+            access.
           </span>
           {modsDirectory && (
             <span className="max-w-full truncate" title={modsDirectory}>
@@ -413,7 +501,8 @@ export function NoLoaderExtensionPage() {
     (entry) => entry.modId === modId && entry.item.pageId === pageId,
   )?.item.label;
   const handleAction = useMemo(
-    () => (action: string, value?: string | number | boolean) => sendAction(modId, action, value),
+    () => (action: string, value?: string | number | boolean) =>
+      sendAction(modId, action, value),
     [modId, sendAction],
   );
 
@@ -455,7 +544,7 @@ export function NoLoaderExtensionPage() {
           <div>
             <p className="mb-1 text-xs text-white/40">
               {mod.manifest.name} <span aria-hidden="true">/</span>{" "}
-              {navLabel ?? "Extension page"}
+              {navLabel ?? "Mod page"}
             </p>
             <h1 className="font-smallcaps text-3xl tracking-wide">
               {registered.page.title}
@@ -514,7 +603,7 @@ function LoadingState() {
       />
       <p className="text-sm">Scanning the NoLoader mods folder</p>
       <p className="mt-1 text-xs text-white/30">
-        Validating manifests and starting enabled extensions
+        Checking manifests and starting enabled launcher mods
       </p>
     </div>
   );
@@ -533,10 +622,10 @@ function EmptyState({
         <Blocks className="h-6 w-6" aria-hidden="true" />
       </span>
       <h3 className="text-sm font-semibold text-white/85">
-        No extensions installed
+        No launcher mods installed
       </h3>
       <p className="mt-2 max-w-sm text-xs leading-5 text-white/45">
-        Place an unpacked extension folder containing{" "}
+        Place an unpacked launcher mod folder containing{" "}
         <code className="rounded bg-white/[0.06] px-1 py-0.5 text-white/65">
           noloader.mod.json
         </code>{" "}
@@ -629,7 +718,7 @@ function ModDetails({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/40">
-              Extension details
+              Mod details
             </p>
             <h2 className="mt-2 break-words text-xl font-semibold text-white">
               {manifest?.name ?? mod.directory}

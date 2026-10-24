@@ -16,6 +16,6 @@ Any distributed build is an unofficial community fork. Source and bundled runtim
 
 ## Build and release status
 
-The launcher source can be built with the upstream Tauri process after installing Node, Yarn, Rust, and the platform prerequisites. See the [development guide](development.md). The source is based on official NoRisk Launcher `v0.6.29` at upstream commit `bfc2e0564f9c0c96d3ce9062deab316647932c64`; this fork identifies its launcher build as `0.6.30-noloader.1`.
+The launcher source can be built with the upstream Tauri process after installing Node, Yarn, Rust, and the platform prerequisites. See the [development guide](development.md). The source is based on official NoRisk Launcher `v0.6.29` at upstream commit `bfc2e0564f9c0c96d3ce9062deab316647932c64`; this fork identifies its launcher build as `0.6.30-noloader.2`.
 
 The installer verifies signed release metadata. The public source fork includes a pinned catalog key and a Windows release workflow that publishes the launcher, installer, and signed catalog. The release workflow supplies `NOLOADER_RELEASE_CATALOG_URL` and `NOLOADER_RELEASE_PUBLIC_KEY_PEM`; its signing secret is never embedded in the installer.
