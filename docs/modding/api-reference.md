@@ -75,6 +75,8 @@ const serverPid = await api.system.process.spawn({ program: "my-local-server.exe
 await api.system.process.open("C:/projects/example");
 ```
 
+For interactive tools, `api.system.process.start(request)` returns a managed session with a PID. Poll `read(sessionId)` for buffered stdout/stderr, send text with `write(sessionId, text)`, and call `close(sessionId)` to terminate it. Sessions capture output up to 1 MiB and close automatically when their owning extension stops; an extension can manage up to 32 sessions at once. This supports local tools, scripts, development servers, and command-line integrations without leaving orphaned sessions after an extension reload.
+
 `run` captures output, limits each stream to 1 MiB, and terminates after 60 seconds. `spawn` starts a detached long-running process and returns its process ID without capturing output. Neither method elevates privileges. With `system.process`, an extension can run any executable available to the user, so only enable it for code you trust. See [permissions](permissions.md) and [security status](security.md).
 
 ## Network, updates, storage, and events

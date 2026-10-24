@@ -136,7 +136,7 @@ const api = Object.freeze({
       remove(path, recursive) { return requestApi("files.remove", { path, recursive }); }, copy(source, destination) { return requestApi("files.copy", { source, destination }); },
       move(source, destination) { return requestApi("files.move", { source, destination }); }, exists(path) { return requestApi("files.exists", { path }); },
     }),
-    process: Object.freeze({ run(request) { return requestApi("process.run", request); }, spawn(request) { return requestApi("process.spawn", request); }, open(path) { return requestApi("process.open", { path }); } }),
+    process: Object.freeze({ run(request) { return requestApi("process.run", request); }, spawn(request) { return requestApi("process.spawn", request); }, start(request) { return requestApi("process.sessionStart", request); }, read(sessionId) { return requestApi("process.sessionRead", { sessionId }); }, write(sessionId, text) { return requestApi("process.sessionWrite", { sessionId, text }); }, close(sessionId) { return requestApi("process.sessionClose", { sessionId }); }, open(path) { return requestApi("process.open", { path }); } }),
   }),
   updates: Object.freeze({
     check() { return requestApi("updates.check"); },

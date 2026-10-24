@@ -807,6 +807,26 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
             const pid = await invoke<number | null>("noloader_process_spawn", { request: { program: p.program, args: p.args ?? [], cwd: p.cwd, env } });
             respond(true, pid); return;
           }
+          case "process.sessionStart": {
+            requirePermission("system.process");
+            const p = message.payload as { program?: unknown; args?: unknown; cwd?: unknown; env?: unknown };
+            if (!p || typeof p.program !== "string" || p.program.length > 4096 || (p.args !== undefined && (!Array.isArray(p.args) || p.args.some(arg => typeof arg !== "string")))) throw new Error("Process request is invalid.");
+            const env = p.env === undefined ? {} : p.env;
+            if (!env || typeof env !== "object" || Array.isArray(env) || Object.entries(env).some(([key,value]) => typeof value !== "string" || key.length > 256 || value.length > 16384)) throw new Error("Process environment must be a string map.");
+            const session = await invoke<{ sessionId: string; pid: number | null }>("noloader_process_session_start", { modId, request: { program: p.program, args: p.args ?? [], cwd: p.cwd, env } });
+            respond(true, session); return;
+          }
+          case "process.sessionRead": case "process.sessionWrite": case "process.sessionClose": {
+            requirePermission("system.process");
+            const p = message.payload as { sessionId?: unknown; text?: unknown };
+            if (!p || typeof p.sessionId !== "string" || p.sessionId.length > 64) throw new Error("Process session ID is invalid.");
+            if (message.operation === "process.sessionRead") respond(true, await invoke("noloader_process_session_read", { modId, sessionId: p.sessionId }));
+            else if (message.operation === "process.sessionWrite") {
+              if (typeof p.text !== "string" || p.text.length > 64 * 1024) throw new Error("Process input exceeds 64 KiB.");
+              await invoke("noloader_process_session_write", { modId, sessionId: p.sessionId, text: p.text }); respond(true);
+            } else { await invoke("noloader_process_session_close", { modId, sessionId: p.sessionId }); respond(true); }
+            return;
+          }
           case "performance.getSnapshot": {
             requirePermission("launcher.performance.read");
             const now = Date.now();

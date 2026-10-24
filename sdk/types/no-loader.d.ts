@@ -124,6 +124,17 @@ export interface ModProcessResult {
   stderr: string;
 }
 
+export interface ModProcessSession {
+  sessionId: string;
+  pid: number | null;
+}
+
+export interface ModProcessSessionOutput {
+  chunks: Array<{ stream: "stdout" | "stderr"; text: string }>;
+  running: boolean;
+  exitCode: number | null;
+}
+
 export interface ClientRuntimeContext {
   /** Aborted when the extension is disabled, fails, or is reloaded. */
   signal: AbortSignal;
@@ -211,6 +222,14 @@ export interface NoLoaderApi {
     process: {
       run(request: ModProcessRequest): Promise<ModProcessResult>;
       spawn(request: ModProcessRequest): Promise<number | null>;
+      /** Start a controllable process. Its pipes are closed when the extension stops. */
+      start(request: ModProcessRequest): Promise<ModProcessSession>;
+      /** Drain currently buffered stdout and stderr text. The native buffer is bounded to 1 MiB. */
+      read(sessionId: string): Promise<ModProcessSessionOutput>;
+      /** Write up to 64 KiB of text to the process stdin. */
+      write(sessionId: string, text: string): Promise<void>;
+      /** Terminate the process and close its session. */
+      close(sessionId: string): Promise<void>;
       open(path: string): Promise<void>;
     };
   };

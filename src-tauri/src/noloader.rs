@@ -1,9 +1,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use std::collections::{HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::sync::{mpsc, watch};
 
 const MODS_DIRECTORY: &str = "mods";
 const MOD_DATA_DIRECTORY: &str = "mod-data";
@@ -19,6 +23,49 @@ const MAX_TOTAL_MANIFEST_BYTES: usize = 16 * 1024 * 1024;
 const MAX_UPDATE_MANIFEST_BYTES: usize = 64 * 1024;
 const MAX_MOD_HTTP_REQUEST_BYTES: usize = 256 * 1024;
 const MAX_MOD_HTTP_RESPONSE_BYTES: usize = 1024 * 1024;
+const MAX_MANAGED_PROCESSES: usize = 32;
+const MAX_PROCESS_OUTPUT_BYTES: usize = 1024 * 1024;
+const MAX_PROCESS_READ_BYTES: usize = 256 * 1024;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModProcessChunk {
+    pub stream: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModProcessSessionRead {
+    pub chunks: Vec<ModProcessChunk>,
+    pub running: bool,
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone)]
+struct ManagedProcessStatus {
+    running: bool,
+    exit_code: Option<i32>,
+}
+
+#[derive(Default)]
+struct ManagedProcessOutput {
+    chunks: VecDeque<ModProcessChunk>,
+    bytes: usize,
+}
+
+struct ManagedProcess {
+    owner_id: String,
+    input: mpsc::Sender<Vec<u8>>,
+    kill: mpsc::UnboundedSender<()>,
+    output: Arc<Mutex<ManagedProcessOutput>>,
+    status: watch::Receiver<ManagedProcessStatus>,
+}
+
+fn managed_processes() -> &'static Mutex<HashMap<String, ManagedProcess>> {
+    static PROCESSES: OnceLock<Mutex<HashMap<String, ManagedProcess>>> = OnceLock::new();
+    PROCESSES.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -149,6 +196,7 @@ pub fn noloader_dispose_client_code(app: AppHandle, mod_id: String) -> Result<()
     if !is_valid_mod_id(&mod_id) {
         return Err("Extension ID is invalid.".to_string());
     }
+    close_process_sessions_for_owner(&mod_id);
     let webview = app
         .get_webview_window("main")
         .ok_or_else(|| "The NoRisk Client main webview is not open.".to_string())?;
@@ -159,6 +207,27 @@ pub fn noloader_dispose_client_code(app: AppHandle, mod_id: String) -> Result<()
             "globalThis.__NOLOADER_EXTENSION_RUNTIMES__?.get({encoded})?.dispose(); globalThis.__NOLOADER_EXTENSION_RUNTIMES__?.delete({encoded})"
         ))
         .map_err(|error| format!("Could not dispose extension runtime: {error}"))
+}
+
+fn close_process_sessions_for_owner(mod_id: &str) {
+    let sessions = managed_processes()
+        .lock()
+        .ok()
+        .map(|mut sessions| {
+            let owned_ids: Vec<String> = sessions
+                .iter()
+                .filter(|(_, session)| session.owner_id == mod_id)
+                .map(|(id, _)| id.clone())
+                .collect();
+            owned_ids
+                .into_iter()
+                .filter_map(|id| sessions.remove(&id))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    for session in sessions {
+        let _ = session.kill.send(());
+    }
 }
 
 #[tauri::command]
@@ -228,6 +297,275 @@ pub async fn noloader_process_spawn(request: ModProcessRequest) -> Result<Option
         .spawn()
         .map_err(|error| format!("Could not start process: {error}"))?;
     Ok(child.id())
+}
+
+#[tauri::command]
+pub async fn noloader_process_session_start(
+    app: AppHandle,
+    mod_id: String,
+    request: ModProcessRequest,
+) -> Result<serde_json::Value, String> {
+    validate_process_request(&request)?;
+    if !is_valid_mod_id(&mod_id) || !mod_has_permission(&app, &mod_id, "system.process")? {
+        return Err("Enabled extension must declare system.process.".to_string());
+    }
+    {
+        let sessions = managed_processes()
+            .lock()
+            .map_err(|_| "Process session manager is unavailable.".to_string())?;
+        if sessions.len() >= MAX_MANAGED_PROCESSES {
+            return Err(format!(
+                "At most {MAX_MANAGED_PROCESSES} managed processes can be open."
+            ));
+        }
+    }
+
+    let mut command = tokio::process::Command::new(&request.program);
+    command
+        .args(&request.args)
+        .envs(&request.env)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    if let Some(cwd) = request.cwd.as_deref() {
+        command.current_dir(cwd);
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Could not start process: {error}"))?;
+    let pid = child.id();
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Could not capture process input.".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Could not capture process output.".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Could not capture process errors.".to_string())?;
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let output = Arc::new(Mutex::new(ManagedProcessOutput::default()));
+    let (input_tx, input_rx) = mpsc::channel::<Vec<u8>>(16);
+    let (kill_tx, mut kill_rx) = mpsc::unbounded_channel::<()>();
+    let (status_tx, status_rx) = watch::channel(ManagedProcessStatus {
+        running: true,
+        exit_code: None,
+    });
+
+    tokio::spawn(write_process_input(stdin, input_rx));
+    tokio::spawn(capture_process_output(
+        stdout,
+        "stdout",
+        Arc::clone(&output),
+    ));
+    tokio::spawn(capture_process_output(
+        stderr,
+        "stderr",
+        Arc::clone(&output),
+    ));
+    tokio::spawn(async move {
+        let result = tokio::select! {
+            result = child.wait() => result,
+            _ = kill_rx.recv() => {
+                let _ = child.start_kill();
+                child.wait().await
+            }
+        };
+        let exit_code = result.ok().and_then(|status| status.code());
+        let _ = status_tx.send(ManagedProcessStatus {
+            running: false,
+            exit_code,
+        });
+    });
+
+    let mut sessions = managed_processes()
+        .lock()
+        .map_err(|_| "Process session manager is unavailable.".to_string())?;
+    if sessions.len() >= MAX_MANAGED_PROCESSES {
+        let _ = kill_tx.send(());
+        return Err(format!(
+            "At most {MAX_MANAGED_PROCESSES} managed processes can be open."
+        ));
+    }
+    sessions.insert(
+        session_id.clone(),
+        ManagedProcess {
+            owner_id: mod_id,
+            input: input_tx,
+            kill: kill_tx,
+            output,
+            status: status_rx,
+        },
+    );
+    Ok(serde_json::json!({ "sessionId": session_id, "pid": pid }))
+}
+
+#[tauri::command]
+pub fn noloader_process_session_read(
+    mod_id: String,
+    session_id: String,
+) -> Result<ModProcessSessionRead, String> {
+    let (output, status) = {
+        let sessions = managed_processes()
+            .lock()
+            .map_err(|_| "Process session manager is unavailable.".to_string())?;
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Process session was not found.".to_string())?;
+        if session.owner_id != mod_id {
+            return Err("Process session belongs to another extension.".to_string());
+        }
+        let status = session.status.borrow().clone();
+        (Arc::clone(&session.output), status)
+    };
+    let mut output = output
+        .lock()
+        .map_err(|_| "Process output buffer is unavailable.".to_string())?;
+    let mut chunks = Vec::new();
+    let mut bytes = 0;
+    while let Some(chunk) = output.chunks.front() {
+        let size = chunk.text.len();
+        if !chunks.is_empty() && bytes + size > MAX_PROCESS_READ_BYTES {
+            break;
+        }
+        let chunk = output.chunks.pop_front().expect("front was present");
+        output.bytes = output.bytes.saturating_sub(size);
+        bytes += size;
+        chunks.push(chunk);
+    }
+    Ok(ModProcessSessionRead {
+        chunks,
+        running: status.running,
+        exit_code: status.exit_code,
+    })
+}
+
+#[tauri::command]
+pub async fn noloader_process_session_write(
+    mod_id: String,
+    session_id: String,
+    text: String,
+) -> Result<(), String> {
+    if text.len() > 64 * 1024 {
+        return Err("Process input exceeds 64 KiB.".to_string());
+    }
+    let input = {
+        let sessions = managed_processes()
+            .lock()
+            .map_err(|_| "Process session manager is unavailable.".to_string())?;
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Process session was not found.".to_string())?;
+        if session.owner_id != mod_id {
+            return Err("Process session belongs to another extension.".to_string());
+        }
+        session.input.clone()
+    };
+    input
+        .send(text.into_bytes())
+        .await
+        .map_err(|_| "Process input is closed.".to_string())
+}
+
+#[tauri::command]
+pub fn noloader_process_session_close(mod_id: String, session_id: String) -> Result<(), String> {
+    let session = {
+        let mut sessions = managed_processes()
+            .lock()
+            .map_err(|_| "Process session manager is unavailable.".to_string())?;
+        let session = sessions
+            .get(&session_id)
+            .ok_or_else(|| "Process session was not found.".to_string())?;
+        if session.owner_id != mod_id {
+            return Err("Process session belongs to another extension.".to_string());
+        }
+        sessions.remove(&session_id)
+    };
+    if let Some(session) = session {
+        let _ = session.kill.send(());
+    }
+    Ok(())
+}
+
+fn validate_process_request(request: &ModProcessRequest) -> Result<(), String> {
+    if request.program.trim().is_empty()
+        || request.program.len() > 4096
+        || request.args.len() > 128
+        || request.args.iter().any(|arg| arg.len() > 16 * 1024)
+        || request.env.len() > 64
+        || request
+            .env
+            .iter()
+            .any(|(key, value)| key.len() > 256 || value.len() > 16 * 1024)
+    {
+        return Err("Process request exceeds supported limits.".to_string());
+    }
+    Ok(())
+}
+
+async fn write_process_input(
+    mut stdin: tokio::process::ChildStdin,
+    mut input: mpsc::Receiver<Vec<u8>>,
+) {
+    while let Some(bytes) = input.recv().await {
+        if stdin.write_all(&bytes).await.is_err() || stdin.flush().await.is_err() {
+            break;
+        }
+    }
+}
+
+async fn capture_process_output<R: AsyncRead + Unpin>(
+    mut reader: R,
+    stream: &'static str,
+    output: Arc<Mutex<ManagedProcessOutput>>,
+) {
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let size = match reader.read(&mut buffer).await {
+            Ok(0) | Err(_) => break,
+            Ok(size) => size,
+        };
+        let text = String::from_utf8_lossy(&buffer[..size]).into_owned();
+        if let Ok(mut output) = output.lock() {
+            output.bytes += text.len();
+            output.chunks.push_back(ModProcessChunk {
+                stream: stream.to_string(),
+                text,
+            });
+            while output.bytes > MAX_PROCESS_OUTPUT_BYTES {
+                let Some(dropped) = output.chunks.pop_front() else {
+                    break;
+                };
+                output.bytes = output.bytes.saturating_sub(dropped.text.len());
+            }
+        }
+    }
+}
+
+fn mod_has_permission(app: &AppHandle, mod_id: &str, permission: &str) -> Result<bool, String> {
+    let snapshot = noloader_list_mods(app.clone())?;
+    Ok(snapshot.entries.iter().any(|entry| {
+        entry.enabled
+            && entry.manifest_json.as_ref().is_some_and(|raw| {
+                serde_json::from_str::<Value>(raw)
+                    .ok()
+                    .is_some_and(|manifest| {
+                        manifest.get("id").and_then(Value::as_str) == Some(mod_id)
+                            && manifest
+                                .get("permissions")
+                                .and_then(Value::as_array)
+                                .is_some_and(|permissions| {
+                                    permissions
+                                        .iter()
+                                        .any(|item| item.as_str() == Some(permission))
+                                })
+                    })
+            })
+    }))
 }
 
 #[tauri::command]
