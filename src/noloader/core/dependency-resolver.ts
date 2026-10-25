@@ -28,6 +28,7 @@ export interface DependencyResolution {
 export interface RuntimeCompatibility {
   apiVersion: number;
   apiVersions?: readonly number[];
+  trustedModIds?: ReadonlySet<string>;
   launcherVersion: string;
 }
 
@@ -65,7 +66,10 @@ export function resolveDependencies(
 
   for (const manifest of [...manifestsById.values()].sort(byId)) {
     if (statusById.has(manifest.id)) continue;
-    if (!(runtime.apiVersions ?? [runtime.apiVersion]).includes(manifest.apiVersion)) {
+    if (
+      !runtime.trustedModIds?.has(manifest.id) &&
+      !(runtime.apiVersions ?? [runtime.apiVersion]).includes(manifest.apiVersion)
+    ) {
       setIssue(
         manifest.id,
         "incompatible",

@@ -27,6 +27,8 @@ const MAX_MANAGED_PROCESSES: usize = 32;
 const MAX_PROCESS_OUTPUT_BYTES: usize = 1024 * 1024;
 const MAX_PROCESS_READ_BYTES: usize = 256 * 1024;
 const NOLOADER_EXTENSION_HOST_VERSION: &str = "0.6.30-noloader.4";
+const MAX_IMPORT_UNPACKED_BYTES: u64 = 200 * 1024 * 1024;
+const MAX_IMPORT_ENTRIES: usize = 2_000;
 
 #[tauri::command]
 pub fn noloader_get_extension_host_version() -> String {
@@ -80,6 +82,14 @@ pub struct ModDirectoryEntry {
     pub manifest_json: Option<String>,
     pub error: Option<String>,
     pub enabled: bool,
+    pub trust_level: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModImportRequest {
+    pub folder_path: String,
+    pub trust_level: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -195,6 +205,61 @@ pub fn noloader_execute_client_code(
     webview
         .eval(&script)
         .map_err(|error| format!("Could not execute client module: {error}"))
+}
+
+#[tauri::command]
+pub fn noloader_execute_trusted_mod(app: AppHandle, mod_id: String) -> Result<(), String> {
+    if !is_valid_mod_id(&mod_id) {
+        return Err("Extension ID is invalid.".to_string());
+    }
+    let (data_directory, _) = ensure_mod_directories(&app)?;
+    let settings = read_settings(&data_directory)?;
+    let snapshot = noloader_list_mods(app.clone())?;
+    let installed_directory = snapshot
+        .entries
+        .iter()
+        .find(|entry| {
+            entry.enabled
+                && entry.trust_level == "high"
+                && entry.manifest_json.as_ref().is_some_and(|manifest| {
+                    serde_json::from_str::<Value>(manifest)
+                        .ok()
+                        .and_then(|value| {
+                            value.get("id").and_then(Value::as_str).map(str::to_owned)
+                        })
+                        .as_deref()
+                        == Some(mod_id.as_str())
+                })
+        })
+        .map(|entry| entry.directory.clone());
+    if settings.safe_mode {
+        return Err(
+            "Trusted extension is not enabled or NoLoader safe mode is active.".to_string(),
+        );
+    }
+    let installed_directory = installed_directory
+        .ok_or_else(|| "Trusted extension is not enabled in NoLoader.".to_string())?;
+    let assets = noloader_read_mod_assets(app.clone(), installed_directory)?;
+    let manifest: Value = serde_json::from_str(&assets.manifest_json)
+        .map_err(|error| format!("Could not read trusted extension manifest: {error}"))?;
+    if manifest.get("id").and_then(Value::as_str) != Some(mod_id.as_str()) {
+        return Err("Trusted extension manifest changed after discovery.".to_string());
+    }
+    let webview = app
+        .get_webview_window("main")
+        .ok_or_else(|| "The NoRisk Client main webview is not open.".to_string())?;
+    let encoded_id = serde_json::to_string(&mod_id)
+        .map_err(|error| format!("Could not encode extension ID: {error}"))?;
+    let encoded_source = serde_json::to_string(&assets.frontend_source)
+        .map_err(|error| format!("Could not encode client module: {error}"))?;
+    let encoded_styles = serde_json::to_string(&assets.styles)
+        .map_err(|error| format!("Could not encode extension stylesheet: {error}"))?;
+    let script = format!(
+        "(() => {{ const modId = {encoded_id}; const source = {encoded_source}; const styles = {encoded_styles}; const run = () => {{ if (!document.querySelector('#root')) {{ setTimeout(run, 40); return; }} const runtimes = globalThis.__NOLOADER_EXTENSION_RUNTIMES__ ??= new Map(); runtimes.get(modId)?.dispose(); document.querySelectorAll('[data-noloader-trusted-style]').forEach(element => {{ if (element.dataset.noloaderTrustedStyle === modId) element.remove(); }}); if (styles) {{ const style = document.createElement('style'); style.dataset.noloaderTrustedStyle = modId; style.textContent = styles; document.head.append(style); }} const controller = new AbortController(); const cleanups = new Set(); const runtime = {{ signal: controller.signal, onDispose(cleanup) {{ if (typeof cleanup !== 'function') throw new TypeError('Cleanup must be a function.'); cleanups.add(cleanup); return () => cleanups.delete(cleanup); }}, dispose() {{ controller.abort(); document.querySelectorAll('[data-noloader-trusted-style]').forEach(element => {{ if (element.dataset.noloaderTrustedStyle === modId) element.remove(); }}); for (const cleanup of cleanups) {{ try {{ Promise.resolve(cleanup()).catch(error => console.error('[NoLoader trusted mod cleanup]', error)); }} catch (error) {{ console.error('[NoLoader trusted mod cleanup]', error); }} }} cleanups.clear(); }} }}; runtimes.set(modId, runtime); const url = URL.createObjectURL(new Blob([source], {{ type: 'text/javascript' }})); import(url).catch(error => console.error('[NoLoader trusted mod]', error)).finally(() => URL.revokeObjectURL(url)); }}; run(); }})()"
+    );
+    webview
+        .eval(&script)
+        .map_err(|error| format!("Could not execute trusted extension: {error}"))
 }
 
 #[tauri::command]
@@ -719,6 +784,8 @@ struct NoLoaderSettings {
     safe_mode: bool,
     #[serde(default)]
     disabled_mod_directories: Vec<String>,
+    #[serde(default)]
+    mod_trust_levels: HashMap<String, String>,
     #[serde(flatten)]
     extra: Map<String, Value>,
 }
@@ -729,6 +796,7 @@ impl Default for NoLoaderSettings {
             schema_version: 1,
             safe_mode: false,
             disabled_mod_directories: Vec::new(),
+            mod_trust_levels: HashMap::new(),
             extra: Map::new(),
         }
     }
@@ -820,11 +888,18 @@ pub fn noloader_list_mods(app: AppHandle) -> Result<ModDirectorySnapshot, String
         }
         total_manifest_bytes += manifest_json.len();
         let enabled = !disabled.contains(&directory);
+        let trust_level = settings
+            .mod_trust_levels
+            .get(&directory)
+            .filter(|level| matches!(level.as_str(), "standard" | "high"))
+            .cloned()
+            .unwrap_or_else(|| "standard".to_string());
         entries.push(ModDirectoryEntry {
             directory,
             manifest_json: Some(manifest_json),
             error: None,
             enabled,
+            trust_level,
         });
     }
 
@@ -858,6 +933,153 @@ pub fn noloader_set_mod_enabled(
         settings.disabled_mod_directories.dedup();
     }
     write_settings(&data_directory, &settings)
+}
+
+#[tauri::command]
+pub fn noloader_import_mod_folder(
+    app: AppHandle,
+    request: ModImportRequest,
+) -> Result<String, String> {
+    if !matches!(request.trust_level.as_str(), "standard" | "high") {
+        return Err("Permission level must be standard or high.".to_string());
+    }
+    let source_path = PathBuf::from(&request.folder_path);
+    let metadata = fs::symlink_metadata(&source_path)
+        .map_err(|error| format!("Could not inspect selected mod folder: {error}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("Selected mod must be a regular folder, not a symbolic link.".to_string());
+    }
+    let source_root = source_path
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve selected mod folder: {error}"))?;
+    let (data_directory, mods_directory) = ensure_mod_directories(&app)?;
+    let temp_dir = tempfile::Builder::new()
+        .prefix(".import-")
+        .tempdir_in(&mods_directory)
+        .map_err(|error| format!("Could not create mod staging folder: {error}"))?;
+    let mut entry_count = 0usize;
+    let mut copied_bytes = 0u64;
+    copy_mod_folder_contents(
+        &source_root,
+        &source_root,
+        temp_dir.path(),
+        &mut entry_count,
+        &mut copied_bytes,
+    )?;
+    let manifest_text = read_limited_file(
+        temp_dir.path(),
+        Path::new("noloader.mod.json"),
+        MAX_MANIFEST_BYTES,
+    )?;
+    let manifest: Value = serde_json::from_str(&manifest_text)
+        .map_err(|error| format!("Mod manifest is invalid JSON: {error}"))?;
+    let mod_id = manifest
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Mod manifest is missing its ID.".to_string())?;
+    if !is_valid_mod_id(mod_id) {
+        return Err("Mod manifest ID is invalid.".to_string());
+    }
+    let frontend = manifest
+        .get("entrypoints")
+        .and_then(Value::as_object)
+        .and_then(|entry| entry.get("frontend"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Mod manifest is missing its frontend entry point.".to_string())?;
+    if !is_safe_entry_point(frontend, &[".js", ".mjs"]) {
+        return Err("Mod frontend path is unsafe.".to_string());
+    }
+    let _ = read_limited_file(temp_dir.path(), Path::new(frontend), MAX_MOD_ASSET_BYTES)?;
+    if !is_valid_directory_name(mod_id) {
+        return Err("Mod ID cannot be used as a folder name.".to_string());
+    }
+    let destination = mods_directory.join(mod_id);
+    if destination.exists() {
+        return Err(format!("A mod folder named {mod_id} already exists."));
+    }
+    let mut settings = read_settings(&data_directory)?;
+    settings
+        .mod_trust_levels
+        .insert(mod_id.to_string(), request.trust_level);
+    settings
+        .disabled_mod_directories
+        .retain(|directory| directory != mod_id);
+    fs::rename(temp_dir.path(), &destination)
+        .map_err(|error| format!("Could not install mod: {error}"))?;
+    if let Err(error) = write_settings(&data_directory, &settings) {
+        let _ = fs::remove_dir_all(&destination);
+        return Err(error);
+    }
+    Ok(mod_id.to_string())
+}
+
+fn copy_mod_folder_contents(
+    source_root: &Path,
+    current_source: &Path,
+    staging_root: &Path,
+    entry_count: &mut usize,
+    copied_bytes: &mut u64,
+) -> Result<(), String> {
+    for entry in fs::read_dir(current_source)
+        .map_err(|error| format!("Could not read selected mod folder: {error}"))?
+    {
+        let entry =
+            entry.map_err(|error| format!("Could not inspect mod folder entry: {error}"))?;
+        *entry_count += 1;
+        if *entry_count > MAX_IMPORT_ENTRIES {
+            return Err(format!(
+                "Mod folder contains more than {MAX_IMPORT_ENTRIES} entries."
+            ));
+        }
+        let source_path = entry.path();
+        let relative_path = source_path
+            .strip_prefix(source_root)
+            .map_err(|_| "Mod folder entry resolves outside its selected folder.".to_string())?;
+        if !is_safe_relative_path(relative_path) {
+            return Err("Mod folder contains a file path with unsupported characters.".to_string());
+        }
+        let metadata = fs::symlink_metadata(&source_path)
+            .map_err(|error| format!("Could not inspect mod folder entry: {error}"))?;
+        if metadata.file_type().is_symlink() {
+            return Err("Mod folders may not contain symbolic links.".to_string());
+        }
+        let destination = staging_root.join(relative_path);
+        if metadata.is_dir() {
+            fs::create_dir(&destination)
+                .map_err(|error| format!("Could not create staging subfolder: {error}"))?;
+            copy_mod_folder_contents(
+                source_root,
+                &source_path,
+                staging_root,
+                entry_count,
+                copied_bytes,
+            )?;
+            continue;
+        }
+        if !metadata.is_file() {
+            return Err("Mod folder may contain only regular files and folders.".to_string());
+        }
+        *copied_bytes = copied_bytes.saturating_add(metadata.len());
+        if *copied_bytes > MAX_IMPORT_UNPACKED_BYTES {
+            return Err("Mod folder exceeds the 200 MiB import limit.".to_string());
+        }
+        let input = fs::File::open(&source_path)
+            .map_err(|error| format!("Could not open mod file: {error}"))?;
+        let mut output = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&destination)
+            .map_err(|error| format!("Could not copy mod file: {error}"))?;
+        let copied = std::io::copy(
+            &mut input.take(metadata.len().saturating_add(1)),
+            &mut output,
+        )
+        .map_err(|error| format!("Could not copy mod file: {error}"))?;
+        if copied != metadata.len() {
+            return Err("Mod file changed while it was being imported.".to_string());
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1359,6 +1581,7 @@ fn invalid_entry(directory: String, error: String) -> ModDirectoryEntry {
         manifest_json: None,
         error: Some(error),
         enabled: false,
+        trust_level: "standard".to_string(),
     }
 }
 

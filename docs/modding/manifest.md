@@ -34,7 +34,7 @@ The core reads UTF-8 JSON named `noloader.mod.json`. It rejects malformed JSON, 
 - `license`: optional non-empty label; it does not grant redistribution rights.
 - `repository`: optional HTTPS URL.
 - `updates.manifestUrl`: optional HTTPS JSON feed URL. NoLoader checks it on manager startup and compares the feed's SemVer version with the installed mod. The feed must return `{ "id": "org.example.hello", "version": "1.2.0", "downloadUrl": "https://…", "changelogUrl": "https://…" }`; links are optional but, when present, must be HTTPS. New versions are reported with links and are never silently installed.
-- `apiVersion`: required positive integer. API 5 is current; current NoLoader builds continue to support API 1, 2, 3, and 4 extensions.
+- `apiVersion`: required positive integer. API 6 is current; current NoLoader builds continue to support API 1 through 5 extensions.
 - `launcherVersions`: required non-empty list of at most 32 SemVer versions. Compatibility is an exact SemVer precedence match against the running launcher version.
 - `entrypoints.frontend`: required relative `.js` or `.mjs` file path.
 - `entrypoints.styles`: optional relative `.css` file path.

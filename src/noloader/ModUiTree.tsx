@@ -18,6 +18,7 @@ const hostStyles = `
   .noloader-card { display: grid; gap: 10px; padding: 18px; border: 1px solid rgba(186, 203, 226, .14); border-radius: 10px; background: rgba(10, 14, 21, .5); }
   .noloader-card-title { margin: 0; color: #f3f6fb; font-size: 15px; font-weight: 650; }
   .noloader-text { margin: 0; color: #c1cad8; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .noloader-image { display: block; width: 64px; height: 64px; object-fit: cover; border-radius: 10px; image-rendering: pixelated; }
   .noloader-heading { margin: 0; color: #f3f6fb; line-height: 1.25; }
   h1.noloader-heading { font-size: 25px; }
   h2.noloader-heading { font-size: 20px; }
@@ -91,6 +92,8 @@ function ModNode({
   switch (node.type) {
     case "text":
       return <p className="noloader-text">{node.text}</p>;
+    case "image":
+      return <img className="noloader-image" src={node.src} alt={node.alt} />;
     case "heading": {
       const Tag = `h${node.level}` as "h1" | "h2" | "h3";
       return <Tag className="noloader-heading">{node.text}</Tag>;

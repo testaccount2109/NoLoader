@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "id": "org.noloader.quickjoin",
-  "name": "Quick Join Probe",
-  "version": "1.0.0",
-  "description": "Shows the most recent NoRisk Quick Play server below Play and demonstrates importing loader mods into game profiles.",
-  "apiVersion": 2,
-  "launcherVersions": ["0.6.29", "0.6.30-noloader.1", "0.6.30-noloader.2", "0.6.30-noloader.3", "0.6.30-noloader.4"],
+  "name": "Last Server Quick Join",
+  "version": "1.2.0",
+  "description": "Tracks the last server from Minecraft logs or NoRisk Quick Play, shows player count, and joins with one click.",
+  "apiVersion": 5,
+  "launcherVersions": ["0.6.30-noloader.4"],
   "entrypoints": {
     "frontend": "dist/index.js",
     "styles": "styles.css"
@@ -19,6 +19,10 @@
     "ui.navigation",
     "launcher.profiles.read",
     "launcher.lastServer.read",
-    "launcher.launch"
+    "launcher.launch",
+    "network.http",
+    "storage.mod",
+    "system.dialog",
+    "system.files"
   ]
 }

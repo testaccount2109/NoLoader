@@ -17,6 +17,7 @@ export type ModActionValue = string | number | boolean;
 
 export type ModUiNode =
   | { type: "text"; text: string }
+  | { type: "image"; src: string; alt: string }
   | { type: "heading"; level: 1 | 2 | 3; text: string }
   | { type: "button"; id: string; label: string; action: string }
   | { type: "toggle"; id: string; label: string; checked: boolean; action: string; disabled?: boolean }
@@ -59,6 +60,21 @@ export interface LastPlayedServer {
   profileId: string;
   address: string;
   playedAt: string;
+}
+
+export interface LastPlayedServerStatus {
+  description: string | null;
+  playersOnline: number | null;
+  playersMax: number | null;
+  faviconBase64: string | null;
+  latencyMs: number | null;
+  error: string | null;
+}
+
+export interface ProfileServer {
+  name: string | null;
+  address: string | null;
+  iconBase64: string | null;
 }
 
 export interface ModUpdateCheck {
@@ -179,6 +195,8 @@ export interface NoLoaderApi {
   };
   servers: {
     getLastPlayed(): Promise<LastPlayedServer | null>;
+    getLastPlayedStatus(): Promise<LastPlayedServerStatus | null>;
+    listForProfile(profileId: string): Promise<ProfileServer[]>;
   };
   launcher: {
     launchProfile(request: LaunchProfileRequest): Promise<void>;

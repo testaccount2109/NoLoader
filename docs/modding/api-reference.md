@@ -1,4 +1,4 @@
-# NoLoader extension API, version 5
+# NoLoader extension API, version 6
 
 An extension exports `activate(api)` from its bundled ES module. It runs in an isolated Web Worker and communicates with NoRisk Client through a private host channel. The public TypeScript declarations are in [`sdk/types/no-loader.d.ts`](../../sdk/types/no-loader.d.ts).
 
@@ -6,7 +6,7 @@ An extension exports `activate(api)` from its bundled ES module. It runs in an i
 
 Request `ui.pages` to call `api.registerPage({ id, title, content })` and `api.updatePage(id, page)`. Request `ui.navigation` for `api.registerNavigationItem({ id, label, pageId, icon? })`; request `ui.home` for `api.registerHomeWidget({ id, title, content, position? })` and its update method. `api.onAction(callback)` receives actions fired by buttons, toggles, inputs, and selects in those descriptors. Registration methods return cleanup functions.
 
-Request `ui.globalStyles` to use `api.theme.registerGlobalStyles(css)` or `updateGlobalStyles(css)`. Global CSS can affect the launcher's appearance across screens. Styles are validated and removed when the extension stops. Pages use a validated component catalog (text, heading, button, toggle, input, select, progress, stack, card); arbitrary React nodes are not accepted.
+Request `ui.globalStyles` to use `api.theme.registerGlobalStyles(css)` or `updateGlobalStyles(css)`. Global CSS can affect the launcher's appearance across screens. Styles are validated and removed when the extension stops. Pages use a validated component catalog (text, PNG image, heading, button, toggle, input, select, progress, stack, card); arbitrary React nodes are not accepted.
 
 `api.windows.openPage({ id, title, pageId, width?, height? })` requires `launcher.windows` and opens a registered page in its own desktop window. `api.windows.open({ id, title, width?, height? })` opens a blank extension-owned webview outside the main launcher UI; `api.windows.close(id)` closes that extension's window.
 
@@ -30,6 +30,8 @@ The SDK types declare `noLoaderExtension` globally for modules executed this way
 
 - `api.profiles.list()` (`launcher.profiles.read`) returns profile ID, name, game version, loader, last-played time, and last-played status.
 - `api.servers.getLastPlayed()` (`launcher.lastServer.read`) returns the most recent Quick Play target or `null`.
+- `api.servers.getLastPlayedStatus()` (`launcher.lastServer.read`) pings only that saved target and returns its MOTD, online/max player counts, favicon, and latency.
+- `api.servers.listForProfile(profileId)` (`launcher.profiles.read`) returns saved server names and icons from that profile's Minecraft server list.
 - `api.launcher.launchProfile({ profileId, serverAddress? })` (`launcher.launch`) launches an installed NoRisk profile. A supplied address uses the launcher's Quick Play flow. This must be called directly from a user-triggered extension action.
 - `api.features.setEnabled(id, enabled)` and `getSnapshot()` (`launcher.features.manage`) manage the documented IDs `curseforge.integration`, `launcher.news`, `launcher.effects`, and `launcher.ads`. Overrides last only while the extension is enabled.
 - `api.performance.getSnapshot()` (`launcher.performance.read`) reports extension count and API request/latency metrics.

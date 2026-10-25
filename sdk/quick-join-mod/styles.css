@@ -1,6 +1,26 @@
 .noloader-card {
+  align-items: center;
   border-color: rgba(117, 174, 255, 0.24);
   background: linear-gradient(120deg, rgba(20, 38, 62, 0.82), rgba(10, 14, 21, 0.74));
+}
+
+.noloader-image {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  image-rendering: pixelated;
+}
+
+.noloader-stack.column {
+  min-width: 0;
+  gap: 3px;
+}
+
+.noloader-heading,
+.noloader-text {
+  overflow-wrap: anywhere;
 }
 
 .noloader-action {

@@ -1,5 +1,6 @@
 export type ModUiNode =
   | { type: "text"; text: string }
+  | { type: "image"; src: string; alt: string }
   | { type: "heading"; level: 1 | 2 | 3; text: string }
   | { type: "button"; id: string; label: string; action: string }
   | { type: "toggle"; id: string; label: string; checked: boolean; action: string; disabled?: boolean }
@@ -159,6 +160,17 @@ function validateNode(
       ok: true,
       value: { type: "heading", level: value.level, text: value.text },
     };
+  }
+
+  if (value.type === "image") {
+    if (!hasOnlyKeys(value, ["type", "src", "alt"])) {
+      return invalid("Image component has unknown fields.");
+    }
+    if (typeof value.src !== "string" || value.src.length > 128 * 1024 || !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(value.src)) {
+      return invalid("Image source must be a PNG data URL no larger than 128 KiB.");
+    }
+    if (!isText(value.alt, 120)) return invalid("Image alt text must be 1–120 characters.");
+    return { ok: true, value: { type: "image", src: value.src, alt: value.alt } };
   }
 
   if (value.type === "button") {

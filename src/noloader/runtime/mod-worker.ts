@@ -113,6 +113,8 @@ const api = Object.freeze({
   }),
   servers: Object.freeze({
     getLastPlayed() { return requestApi("servers.getLastPlayed"); },
+    getLastPlayedStatus() { return requestApi("servers.getLastPlayedStatus"); },
+    listForProfile(profileId) { return requestApi("servers.listForProfile", { profileId }); },
   }),
   launcher: Object.freeze({
     launchProfile(request) { return requestApi("launcher.launchProfile", request); },

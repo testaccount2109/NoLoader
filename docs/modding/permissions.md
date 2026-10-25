@@ -8,8 +8,8 @@ NoLoader extensions declare the capabilities they need in `noloader.mod.json`. M
 | `ui.navigation` | `registerNavigationItem` |
 | `ui.home` | `registerHomeWidget`, `updateHomeWidget` |
 | `ui.globalStyles` | `theme.registerGlobalStyles`, `theme.updateGlobalStyles` |
-| `launcher.profiles.read` | `profiles.list` |
-| `launcher.lastServer.read` | `servers.getLastPlayed` |
+| `launcher.profiles.read` | `profiles.list`, `servers.listForProfile` |
+| `launcher.lastServer.read` | `servers.getLastPlayed`, `servers.getLastPlayedStatus` |
 | `launcher.launch` | `launcher.launchProfile` |
 | `launcher.features.manage` | `features.setEnabled`, `features.getSnapshot` |
 | `launcher.performance.read` | `performance.getSnapshot` |

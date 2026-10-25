@@ -95,6 +95,7 @@ export interface NoLoaderMod {
   manifest?: ModManifest;
   manifestJson?: string;
   enabled: boolean;
+  trustLevel: "standard" | "high";
   state: ModLifecycleState;
   detail?: string;
   update?: { state: "checking" | "available" | "current" | "error"; version?: string; downloadUrl?: string; changelogUrl?: string; detail?: string };
@@ -122,6 +123,7 @@ interface NativeModDirectoryEntry {
   manifestJson: string | null;
   error: string | null;
   enabled: boolean;
+  trustLevel: "standard" | "high";
 }
 
 interface NativeModSnapshot {
@@ -143,6 +145,21 @@ interface LastPlayedServer {
   playedAt: string;
 }
 
+interface LastPlayedServerStatus {
+  description: string | null;
+  playersOnline: number | null;
+  playersMax: number | null;
+  faviconBase64: string | null;
+  latencyMs: number | null;
+  error: string | null;
+}
+
+interface ProfileServer {
+  name: string | null;
+  address: string | null;
+  icon_base64: string | null;
+}
+
 interface NoLoaderContextValue {
   mods: NoLoaderMod[];
   pages: RegisteredModPage[];
@@ -159,6 +176,7 @@ interface NoLoaderContextValue {
   setEnabled(directory: string, enabled: boolean): Promise<void>;
   setSafeMode(enabled: boolean): Promise<void>;
   openModsDirectory(): Promise<void>;
+  importModFolder(folderPath: string, trustLevel: "standard" | "high"): Promise<void>;
   sendAction(modId: string, action: string, value?: string | number | boolean): void;
 }
 
@@ -202,6 +220,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
   );
   const generation = useRef(0);
   const workers = useRef(new Map<string, WorkerRuntime>());
+  const trustedMods = useRef(new Set<string>());
   const runtimeFailures = useRef(new Set<string>());
   const pageRegistry = useRef(new Map<string, RegisteredModPage>());
   const navigationRegistry = useRef(new Map<string, RegisteredModNavigation>());
@@ -269,6 +288,8 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
       clearRegistrations(modId);
     }
     workers.current.clear();
+    for (const modId of trustedMods.current) clearRegistrations(modId);
+    trustedMods.current.clear();
     runtimeFailures.current.clear();
   }, [clearRegistrations]);
 
@@ -280,6 +301,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
         runtime.handle.dispose();
         workers.current.delete(modId);
       }
+      trustedMods.current.delete(modId);
       clearRegistrations(modId);
     },
     [clearRegistrations],
@@ -317,6 +339,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
           return {
             directory: entry.directory,
             enabled: false,
+            trustLevel: entry.trustLevel,
             state: "invalid",
             detail: entry.error ?? "Manifest is missing.",
           };
@@ -327,6 +350,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
             directory: entry.directory,
             manifestJson: entry.manifestJson,
             enabled: entry.enabled,
+            trustLevel: entry.trustLevel,
             state: "invalid",
             detail: parsed.issues
               .map(({ path, message }) => `${path}: ${message}`)
@@ -338,6 +362,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
           manifestJson: entry.manifestJson,
           manifest: parsed.manifest,
           enabled: entry.enabled,
+          trustLevel: entry.trustLevel,
           state: !entry.enabled || safeModeActive ? "disabled" : "discovered",
           ...(!entry.enabled
             ? { detail: "Disabled in NoLoader settings." }
@@ -360,6 +385,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
         {
           apiVersion: NOLOADER_API_VERSION,
           apiVersions: SUPPORTED_NOLOADER_API_VERSIONS,
+          trustedModIds: new Set(enabledMods.filter((mod) => mod.trustLevel === "high").map((mod) => mod.manifest!.id)),
           launcherVersion: runningVersion,
         },
       );
@@ -619,6 +645,42 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
               "noloader_get_last_played_server",
             );
             respond(true, server);
+            return;
+          }
+          case "servers.getLastPlayedStatus": {
+            requirePermission("launcher.lastServer.read");
+            const server = await invoke<LastPlayedServer | null>("noloader_get_last_played_server");
+            if (!server) { respond(true, null); return; }
+            const status = await invoke<{
+              description: string | null;
+              players_online: number | null;
+              players_max: number | null;
+              favicon_base64: string | null;
+              latency_ms: number | null;
+              error: string | null;
+            }>("ping_minecraft_server", { address: server.address });
+            respond(true, {
+              description: status.description,
+              playersOnline: status.players_online,
+              playersMax: status.players_max,
+              faviconBase64: status.favicon_base64,
+              latencyMs: status.latency_ms,
+              error: status.error,
+            } satisfies LastPlayedServerStatus);
+            return;
+          }
+          case "servers.listForProfile": {
+            requirePermission("launcher.profiles.read");
+            const profileId = (message.payload as { profileId?: unknown } | undefined)?.profileId;
+            if (typeof profileId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(profileId)) {
+              throw new Error("Profile ID is invalid.");
+            }
+            const servers = await invoke<ProfileServer[]>("get_servers_for_profile", { profileId });
+            respond(true, servers.map((server) => ({
+              name: server.name,
+              address: server.address,
+              iconBase64: server.icon_base64,
+            })));
             return;
           }
           case "updates.check": {
@@ -1479,6 +1541,17 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
     ) => {
       if (!record.manifest)
         throw new Error("Mod manifest disappeared before activation.");
+      if (record.trustLevel === "high") {
+        await invoke("noloader_execute_trusted_mod", {
+          modId: record.manifest.id,
+        });
+        trustedMods.current.add(record.manifest.id);
+        if (currentGeneration !== generation.current) {
+          trustedMods.current.delete(record.manifest.id);
+          await invoke("noloader_dispose_client_code", { modId: record.manifest.id }).catch(() => undefined);
+        }
+        return;
+      }
       const runtime: WorkerRuntime = {
         handle: undefined as unknown as ModWorkerHandle,
         directory: record.directory,
@@ -1611,6 +1684,13 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
     await openPath(modsDirectory);
   }, [modsDirectory]);
 
+  const importModFolder = useCallback(async (folderPath: string, trustLevel: "standard" | "high") => {
+    await invoke("noloader_import_mod_folder", {
+      request: { folderPath, trustLevel },
+    });
+    await refresh();
+  }, [refresh]);
+
   const sendAction = useCallback((modId: string, action: string, value?: string | number | boolean) => {
     const runtime = workers.current.get(modId);
     if (!runtime || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(action)) return;
@@ -1661,6 +1741,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
       setEnabled,
       setSafeMode,
       openModsDirectory,
+      importModFolder,
       sendAction,
     }),
     [
@@ -1679,6 +1760,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
       setEnabled,
       setSafeMode,
       openModsDirectory,
+      importModFolder,
       sendAction,
     ],
   );
