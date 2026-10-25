@@ -2,7 +2,7 @@
 
 The public source fork publishes a prepared Windows launcher archive, a self-contained installer, and a signed Tauri updater artifact for tagged `noloader-v*` releases. The installer reads the signed catalog from this fork's `noloader-catalog` branch and installs only artifacts whose catalog signature, size, and SHA-256 verify. The launcher checks the static `latest.json` manifest attached to the latest release and verifies the updater artifact with this fork's Tauri key. The upstream NoRisk updater API is not queried. Existing installations must first be migrated once with NoLoader Setup because they still contain the old updater endpoint and key.
 
-The latest published release is [NoLoader Launcher 1.0.11](https://github.com/testaccount2109/noriskclient-launcher/releases/tag/noloader-v1.0.11), published October 25, 2026. The release includes the prepared Windows x64 launcher ZIP, signed updater `.exe` and signature, `latest.json`, installer, and signed catalog. The extension host version embedded in that launcher is `0.6.30-noloader.4`; the product release version and extension host version serve different purposes.
+The latest published release is [NoLoader Launcher 1.0.11](https://github.com/testaccount2109/NoLoader/releases/tag/noloader-v1.0.11), published October 25, 2026. The release includes the prepared Windows x64 launcher ZIP, signed updater `.exe` and signature, `latest.json`, installer, and signed catalog. The extension host version embedded in that launcher is `0.6.30-noloader.4`; the product release version and extension host version serve different purposes.
 
 Before publishing a prepared launcher, a release must identify:
 
