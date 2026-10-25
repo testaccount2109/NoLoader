@@ -219,6 +219,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
     getModFeatureSnapshot,
   );
   const generation = useRef(0);
+  const refreshRef = useRef<() => Promise<void>>(async () => undefined);
   const workers = useRef(new Map<string, WorkerRuntime>());
   const trustedMods = useRef(new Set<string>());
   const runtimeFailures = useRef(new Set<string>());
@@ -427,7 +428,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
         setMods((current) => current.map((mod) =>
           mod.manifest?.updates ? { ...mod, update: { state: "checking" } } : mod,
         ));
-        void Promise.all(modsWithUpdateFeeds.map(async (mod): Promise<[string, NonNullable<NoLoaderMod["update"]>]> => {
+        void Promise.all(modsWithUpdateFeeds.map(async (mod): Promise<[string, NonNullable<NoLoaderMod["update"]>, boolean]> => {
           const manifest = mod.manifest!;
           try {
             const body = await invoke<string>("noloader_fetch_update_manifest", {
@@ -445,25 +446,37 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
                 throw new Error("Update links must use HTTPS.");
               }
             }
+            let didInstall = false;
+            if (comparison > 0 && manifest.updates?.autoInstall) {
+              if (!downloadUrl) throw new Error("Automatic updates need a ZIP downloadUrl in the update feed.");
+              await invoke("noloader_install_mod_update", {
+                directoryName: mod.directory,
+                modId: manifest.id,
+                version: remote.version,
+                url: downloadUrl,
+              });
+              didInstall = true;
+            }
             return [mod.directory, {
               state: comparison > 0 ? "available" : "current",
               version: remote.version,
               ...(downloadUrl ? { downloadUrl } : {}),
               ...(changelogUrl ? { changelogUrl } : {}),
-            }] as [string, NonNullable<NoLoaderMod["update"]>];
+            }, didInstall] as [string, NonNullable<NoLoaderMod["update"]>, boolean];
           } catch (updateError) {
             return [mod.directory, {
               state: "error",
               detail: errorMessage(updateError),
-            }] as [string, NonNullable<NoLoaderMod["update"]>];
+            } as NonNullable<NoLoaderMod["update"]>, false];
           }
         })).then((results) => {
           if (currentGeneration !== generation.current) return;
-          const byDirectory = new Map(results);
+          const byDirectory = new Map(results.map(([directory, update]) => [directory, update]));
           setMods((current) => current.map((mod) => {
             const update = byDirectory.get(mod.directory);
             return update ? { ...mod, update } : mod;
           }));
+          if (results.some(([, , didInstall]) => didInstall)) void refreshRef.current();
         });
       }
 
@@ -548,6 +561,7 @@ export function NoLoaderProvider({ children }: { children: ReactNode }) {
       if (currentGeneration === generation.current) setLoading(false);
     }
   }, [stopAllWorkers, stopMod, updateMod]);
+  refreshRef.current = refresh;
 
   const handleExtensionApiRequest = useCallback(
     async (

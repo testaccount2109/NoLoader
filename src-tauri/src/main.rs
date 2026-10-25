@@ -604,6 +604,7 @@ async fn main() {
             noriskclient_launcher_v3_lib::noloader::noloader_execute_trusted_mod,
             noriskclient_launcher_v3_lib::noloader::noloader_dispose_client_code,
             noriskclient_launcher_v3_lib::noloader::noloader_fetch_update_manifest,
+            noriskclient_launcher_v3_lib::noloader::noloader_install_mod_update,
             noriskclient_launcher_v3_lib::noloader::noloader_set_mod_enabled,
             noriskclient_launcher_v3_lib::noloader::noloader_import_mod_folder,
             noriskclient_launcher_v3_lib::noloader::noloader_set_safe_mode,

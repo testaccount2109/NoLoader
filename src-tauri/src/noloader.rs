@@ -776,6 +776,177 @@ pub async fn noloader_fetch_update_manifest(url: String) -> Result<String, Strin
     String::from_utf8(bytes).map_err(|_| "Update manifest is not valid UTF-8.".to_string())
 }
 
+#[tauri::command]
+pub async fn noloader_install_mod_update(
+    app: AppHandle,
+    directory_name: String,
+    mod_id: String,
+    version: String,
+    url: String,
+) -> Result<(), String> {
+    if !is_valid_mod_id(&mod_id) || !is_valid_directory_name(&directory_name) {
+        return Err("Mod update identity is invalid.".to_string());
+    }
+    let parsed =
+        reqwest::Url::parse(&url).map_err(|_| "Mod package URL is invalid.".to_string())?;
+    if parsed.scheme() != "https"
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err("Mod package URL must use HTTPS and must not contain credentials.".to_string());
+    }
+    let snapshot = noloader_list_mods(app.clone())?;
+    let installed = snapshot
+        .entries
+        .iter()
+        .find(|entry| entry.directory == directory_name)
+        .ok_or_else(|| "Mod to update is no longer installed.".to_string())?;
+    let installed_manifest: Value =
+        serde_json::from_str(installed.manifest_json.as_deref().unwrap_or_default())
+            .map_err(|_| "Installed mod manifest is invalid.".to_string())?;
+    if installed_manifest.get("id").and_then(Value::as_str) != Some(mod_id.as_str()) {
+        return Err("Installed mod ID changed before update.".to_string());
+    }
+    let (_, mods_directory) = ensure_mod_directories(&app)?;
+    let destination = canonical_child_directory(&mods_directory, &directory_name)?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(concat!("NoLoader/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|error| format!("Could not create package client: {error}"))?;
+    let response = client
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|error| format!("Could not download mod update: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("Mod package server returned an error: {error}"))?;
+    if response
+        .content_length()
+        .is_some_and(|size| size > MAX_IMPORT_UNPACKED_BYTES)
+    {
+        return Err("Mod update package exceeds the 200 MiB limit.".to_string());
+    }
+    let mut response = response;
+    let mut archive_bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| format!("Could not read mod package: {error}"))?
+    {
+        if archive_bytes.len().saturating_add(chunk.len()) as u64 > MAX_IMPORT_UNPACKED_BYTES {
+            return Err("Mod update package exceeds the 200 MiB limit.".to_string());
+        }
+        archive_bytes.extend_from_slice(&chunk);
+    }
+
+    let staging = tempfile::Builder::new()
+        .prefix(".update-")
+        .tempdir_in(&mods_directory)
+        .map_err(|error| format!("Could not create mod update staging folder: {error}"))?;
+    let package_root = staging.path().join("package");
+    fs::create_dir(&package_root)
+        .map_err(|error| format!("Could not create package folder: {error}"))?;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(archive_bytes))
+        .map_err(|error| format!("Mod update is not a valid ZIP package: {error}"))?;
+    if archive.len() > MAX_IMPORT_ENTRIES {
+        return Err(format!(
+            "Mod update contains more than {MAX_IMPORT_ENTRIES} entries."
+        ));
+    }
+    let mut unpacked = 0u64;
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| format!("Could not read mod package entry: {error}"))?;
+        let relative = entry
+            .enclosed_name()
+            .ok_or_else(|| "Mod package contains an unsafe path.".to_string())?;
+        if !is_safe_relative_path(&relative) {
+            return Err("Mod package contains an unsupported path.".to_string());
+        }
+        if entry
+            .unix_mode()
+            .is_some_and(|mode| mode & 0o170000 == 0o120000)
+        {
+            return Err("Mod packages may not contain symbolic links.".to_string());
+        }
+        if unpacked.saturating_add(entry.size()) > MAX_IMPORT_UNPACKED_BYTES {
+            return Err("Unpacked mod update exceeds the 200 MiB limit.".to_string());
+        }
+        let output = package_root.join(&relative);
+        if entry.is_dir() {
+            fs::create_dir_all(&output)
+                .map_err(|error| format!("Could not create package directory: {error}"))?;
+        } else {
+            if let Some(parent) = output.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("Could not create package directory: {error}"))?;
+            }
+            let mut file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&output)
+                .map_err(|error| format!("Could not create package file: {error}"))?;
+            let mut buffer = [0u8; 16 * 1024];
+            loop {
+                let read = entry
+                    .read(&mut buffer)
+                    .map_err(|error| format!("Could not extract mod package: {error}"))?;
+                if read == 0 {
+                    break;
+                }
+                unpacked = unpacked.saturating_add(read as u64);
+                if unpacked > MAX_IMPORT_UNPACKED_BYTES {
+                    return Err("Unpacked mod update exceeds the 200 MiB limit.".to_string());
+                }
+                file.write_all(&buffer[..read])
+                    .map_err(|error| format!("Could not write mod package file: {error}"))?;
+            }
+        }
+    }
+    let manifest_text = read_limited_file(
+        &package_root,
+        Path::new("noloader.mod.json"),
+        MAX_MANIFEST_BYTES,
+    )?;
+    let update_manifest: Value = serde_json::from_str(&manifest_text)
+        .map_err(|error| format!("Updated mod manifest is invalid: {error}"))?;
+    if update_manifest.get("id").and_then(Value::as_str) != Some(mod_id.as_str())
+        || update_manifest.get("version").and_then(Value::as_str) != Some(version.as_str())
+    {
+        return Err("Downloaded package ID or version does not match the update feed.".to_string());
+    }
+    let frontend = update_manifest
+        .get("entrypoints")
+        .and_then(Value::as_object)
+        .and_then(|entry| entry.get("frontend"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Updated mod manifest has no frontend entry point.".to_string())?;
+    if !is_safe_entry_point(frontend, &[".js", ".mjs"]) {
+        return Err("Updated mod frontend path is unsafe.".to_string());
+    }
+    let _ = read_limited_file(&package_root, Path::new(frontend), MAX_MOD_ASSET_BYTES)?;
+    let backup = mods_directory.join(format!(".update-backup-{}", mod_id));
+    if backup.exists() {
+        fs::remove_dir_all(&backup)
+            .map_err(|error| format!("Could not remove prior update backup: {error}"))?;
+    }
+    fs::rename(&destination, &backup)
+        .map_err(|error| format!("Could not stage installed mod for update: {error}"))?;
+    if let Err(error) = fs::rename(&package_root, &destination) {
+        let _ = fs::rename(&backup, &destination);
+        return Err(format!(
+            "Could not replace mod with downloaded update: {error}"
+        ));
+    }
+    fs::remove_dir_all(&backup)
+        .map_err(|error| format!("Update installed, but old mod cleanup failed: {error}"))?;
+    Ok(())
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NoLoaderSettings {

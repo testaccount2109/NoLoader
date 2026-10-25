@@ -84,7 +84,7 @@ For interactive tools, `api.system.process.start(request)` returns a managed ses
 ## Network, updates, storage, and events
 
 - `api.network.request({ url, method?, headers?, body? })` (`network.http`) supports HTTPS GET/POST/PUT/PATCH/DELETE, up to 32 headers, 256 KiB request body and 1 MiB response. Redirects are disabled.
-- `api.updates.check()` checks the HTTPS update feed declared in the extension manifest. NoLoader checks installed extensions with feeds at startup and when refreshing the manager, and reports download/changelog links; it does not install an update silently.
+- `api.updates.check()` checks the HTTPS update feed declared in the extension manifest. NoLoader checks feeds at startup and when refreshing the manager. When `updates.autoInstall` is enabled in the manifest, a newer ZIP package is installed automatically; otherwise NoLoader only reports download/changelog links.
 - `api.storage.get/set/delete` (`storage.mod`) persists JSON for this extension only. Values are limited to 64 KiB; a store to 256 KiB.
 - `api.events.on/emit` (`events.subscribe`/`events.publish`) sends transient namespaced JSON events to other running extensions. A publisher can emit only under its own ID; payloads are limited to 16 KiB.
 

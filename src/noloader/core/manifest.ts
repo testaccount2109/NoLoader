@@ -44,9 +44,10 @@ export interface ModManifest {
   authors: string[];
   license?: string;
   repository?: string;
-  updates?: { manifestUrl: string };
+  updates?: { manifestUrl: string; autoInstall?: boolean };
   apiVersion: number;
   launcherVersions: string[];
+  launcherVersionRange?: string;
   entrypoints: {
     frontend: string;
     styles?: string;
@@ -89,6 +90,7 @@ const ALLOWED_FIELDS = new Set([
   "updates",
   "apiVersion",
   "launcherVersions",
+  "launcherVersionRange",
   "entrypoints",
   "dependencies",
   "optionalDependencies",
@@ -179,6 +181,15 @@ export function validateManifest(value: unknown): ManifestResult {
     32,
     true,
   );
+  const launcherVersionRange = readOptionalString(
+    value,
+    "launcherVersionRange",
+    issues,
+    256,
+  );
+  if (launcherVersionRange !== undefined && !isValidSemVerRange(launcherVersionRange)) {
+    issues.push({ path: "launcherVersionRange", message: "Use a space-separated SemVer range such as `>=0.6.29 <0.7.0`." });
+  }
   const entrypoints = readEntrypoints(value, issues);
   const dependencies = readDependencyArray(value, "dependencies", issues);
   const optionalDependencies = readDependencyArray(
@@ -241,6 +252,7 @@ export function validateManifest(value: unknown): ManifestResult {
       ...(updates === undefined ? {} : { updates }),
       apiVersion: apiVersion!,
       launcherVersions: launcherVersions!,
+      ...(launcherVersionRange === undefined ? {} : { launcherVersionRange }),
       entrypoints: entrypoints!,
       dependencies: dependencies ?? [],
       optionalDependencies: optionalDependencies ?? [],
@@ -260,16 +272,23 @@ function readUpdateConfiguration(
     return undefined;
   }
   for (const field of Object.keys(value.updates)) {
-    if (field !== "manifestUrl") {
+    if (field !== "manifestUrl" && field !== "autoInstall") {
       issues.push({ path: `updates.${field}`, message: "Unknown update configuration field." });
     }
   }
   const manifestUrl = readString(value.updates, "manifestUrl", issues, "updates.manifestUrl");
+  const autoInstall = value.updates.autoInstall;
+  if (autoInstall !== undefined && typeof autoInstall !== "boolean") {
+    issues.push({ path: "updates.autoInstall", message: "Expected a boolean." });
+  }
   if (manifestUrl !== undefined && !isHttpsUrl(manifestUrl)) {
     issues.push({ path: "updates.manifestUrl", message: "Update manifest URL must use HTTPS." });
     return undefined;
   }
-  return manifestUrl === undefined ? undefined : { manifestUrl };
+  return manifestUrl === undefined ? undefined : {
+    manifestUrl,
+    ...(autoInstall === true ? { autoInstall: true } : {}),
+  };
 }
 
 export function compareSemVer(left: string, right: string): number {
@@ -318,6 +337,29 @@ export function compareSemVer(left: string, right: string): number {
   return leftVersion.prerelease.length < rightVersion.prerelease.length
     ? -1
     : 1;
+}
+
+export function satisfiesSemVerRange(version: string, range: string): boolean {
+  if (!parseSemVer(version) || !isValidSemVerRange(range)) return false;
+  return range.split(/\s+/).every((term) => {
+    const match = /^(>=|<=|>|<|=)?(.+)$/.exec(term)!;
+    const comparison = compareSemVer(version, match[2]);
+    switch (match[1] ?? "=") {
+      case ">=": return comparison >= 0;
+      case "<=": return comparison <= 0;
+      case ">": return comparison > 0;
+      case "<": return comparison < 0;
+      default: return comparison === 0;
+    }
+  });
+}
+
+function isValidSemVerRange(range: string): boolean {
+  const terms = range.split(/\s+/);
+  return terms.length > 0 && terms.length <= 8 && terms.every((term) => {
+    const match = /^(>=|<=|>|<|=)?(.+)$/.exec(term);
+    return Boolean(match && parseSemVer(match[2]));
+  });
 }
 
 function parseSemVer(value: string): ParsedSemVer | undefined {

@@ -1,4 +1,4 @@
-import { compareSemVer, type ModManifest } from "./manifest.ts";
+import { compareSemVer, satisfiesSemVerRange, type ModManifest } from "./manifest.ts";
 
 export type ModResolutionState =
   | "ready"
@@ -78,9 +78,11 @@ export function resolveDependencies(
       continue;
     }
     if (
-      !manifest.launcherVersions.some(
-        (version) => compareSemVer(version, runtime.launcherVersion) === 0,
-      )
+      !(manifest.launcherVersionRange
+        ? satisfiesSemVerRange(runtime.launcherVersion, manifest.launcherVersionRange)
+        : manifest.launcherVersions.some(
+            (version) => compareSemVer(version, runtime.launcherVersion) === 0,
+          ))
     ) {
       setIssue(
         manifest.id,

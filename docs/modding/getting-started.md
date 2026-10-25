@@ -24,6 +24,6 @@ Copy an SDK example and edit `noloader.mod.json`. Each mod contains its manifest
 
 Use `api.registerPage` and related registrations for launcher UI, `api.events` to coordinate with other extensions, `api.storage` for extension-owned data, and the `launcher.*` or `system.*` APIs for integrations. Each capability must be listed in `permissions`; NoLoader shows those capabilities in the extension manager. `system.files` and `system.process` grant powerful access to the user's PC.
 
-Extensions can declare an HTTPS update feed in `updates.manifestUrl`. The launcher checks feeds at startup and lists newer versions. It reports a download link but does not replace code automatically.
+Extensions can declare an HTTPS update feed in `updates.manifestUrl`. Set `updates.autoInstall` to `true` to let NoLoader install newer ZIP packages automatically. The package ZIP must contain the updated mod files at its root, including `noloader.mod.json`; its ID and version must match the update feed. Use `launcherVersionRange` in the mod manifest to keep the extension compatible across launcher releases that do not affect it.
 
 Read the [API reference](api-reference.md), [manifest schema](manifest.md), [lifecycle](lifecycle.md), [permissions](permissions.md), and [security status](security.md) before publishing.
