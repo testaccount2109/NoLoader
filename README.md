@@ -4,11 +4,22 @@
 
 NoLoader is an unofficial community build based on NoRisk Launcher. It is not affiliated with or endorsed by NoRisk Client. The upstream name and marks identify the software this build extends; their owners retain those rights.
 
-This branch integrates NoLoader into NoRisk Client as an extension framework. Extensions can add launcher pages, navigation, widgets, global styles, standalone windows, storage, inter-extension events, HTTPS integrations, clipboard and notification features, and explicitly permissioned PC file/process access. API 5 also lets a trusted extension execute its own JavaScript modules in the running NoRisk Client renderer for unrestricted client UI and runtime changes. NoLoader extensions do not create or install Minecraft mods. The worker API and examples are in `sdk/`.
+This branch integrates NoLoader into NoRisk Client as an extension framework. Extensions can add launcher pages, navigation, widgets, global styles, standalone windows, storage, inter-extension events, HTTPS integrations, clipboard and notification features, and explicitly permissioned PC file/process access. The API also offers an explicit `launcher.clientRuntime` capability for running custom JavaScript in the NoRisk Client renderer. NoLoader extensions customize the launcher; they do not create or install Minecraft game mods.
 
-NoRisk Client extensions run in dedicated workers and use the permission-checked framework documented in the [getting started guide](docs/modding/getting-started.md), [API reference](docs/modding/api-reference.md), [security status](docs/modding/security.md), and [development guide](docs/development.md). The framework extends NoRisk Client and its desktop integration; it does not install or author Minecraft mods.
+## Build your first extension
 
-The repository also includes a Windows installer that verifies signed catalogs, preserves the old launcher folder, and can restore the original NoRisk installation. Tagged NoLoader releases publish the prepared launcher, installer, and signed Tauri update manifest. The Windows launcher checks only this fork's signed GitHub release feed; it does not query NoRisk's official updater. Existing installations must first be migrated once with NoLoader Setup, which verifies the catalog on the `noloader-catalog` branch. See [installation details](docs/installation.md), [third-party notices](docs/third-party.md), and [release process](docs/releases.md).
+Start with the [extension documentation index](docs/modding/README.md) and follow the [step-by-step guide](docs/modding/getting-started.md) to build and install the Hello example. The index links to the manifest, API, permissions, lifecycle, and security references. Ready-to-build examples live in `sdk/`.
+
+To build an example from the repository root, use Node.js 18 or later and Yarn Classic 1.22:
+
+```powershell
+yarn install --frozen-lockfile
+yarn sdk:hello-mod:build
+```
+
+Copy `sdk/hello-mod` including its generated `dist/` folder into the directory opened by **NoLoader → Open extensions folder**. Refresh NoLoader and enable the extension. You do not need Rust or the full launcher source to build an extension.
+
+The repository also includes a Windows installer that verifies signed catalogs, preserves the old launcher folder, and can restore the original NoRisk installation. [NoLoader Launcher 1.0.11](https://github.com/testaccount2109/noriskclient-launcher/releases/tag/noloader-v1.0.11) is the latest release at the time of writing. Tagged NoLoader releases publish the prepared launcher, installer, and signed Tauri update manifest. The Windows launcher checks only this fork's signed GitHub release feed; it does not query NoRisk's official updater. Existing installations must first be migrated once with NoLoader Setup, which verifies the catalog on the `noloader-catalog` branch. See [installation details](docs/installation.md), [third-party notices](docs/third-party.md), and [release process](docs/releases.md).
 
 ## Issues
 

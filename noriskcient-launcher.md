@@ -15,18 +15,19 @@ This file is maintained because `.cursor/rules/noriskclient-launcher.mdc` requir
 ## NoLoader manifest contract (schema version 1)
 
 - `schemaVersion` is the integer `1`; unsupported values are rejected.
-- `apiVersion` is a positive integer. API compatibility requires exact equality, not lexical or SemVer range comparison.
-- Mod `version`, `launcherVersions`, and dependency `version` values use valid SemVer strings. Launcher compatibility is membership in the manifest's exact version list; comparison uses SemVer precedence (numeric core and prerelease ordering, with build metadata ignored). Dependencies pin one exact SemVer precedence; ranges are not accepted.
+- `apiVersion` is a positive integer. Current host API is 6 and the host supports extension API versions 1 through 6. API compatibility checks whether the requested integer is in the supported version list.
+- Mod `version`, `launcherVersions`, optional `launcherVersionRange`, and dependency `version` values use valid SemVer strings. Launcher compatibility matches exact host-version list membership, unless a `launcherVersionRange` is provided; the range takes precedence and supports up to eight space-separated `>`, `>=`, `<`, `<=`, or `=` comparisons. Dependencies pin one exact SemVer precedence; dependency ranges are not accepted.
 - Required dependencies must exist at the pinned version and load first. Optional dependencies never block a mod and do not impose ordering; they are reported as available only when the matching mod is eligible.
 - IDs are lowercase and namespaced. Manifest fields and dependency objects are strict; unknown fields and permissions are rejected.
 - Frontend entry points must be relative `.js` or `.mjs` paths; styles must be relative `.css` paths. Lexical traversal, absolute paths, backslashes, encoded paths, and unsupported extensions are rejected. Native commands canonicalize paths and reject symlinks that leave the managed mod root; this needs a Rust/Windows runtime check.
-- `permissions` is currently limited to `ui.navigation` and `ui.pages`; NoLoader checks it at the host API boundary.
-- UI pages use a validated component catalog (`text`, `heading`, `button`, `stack`, `card`). Arbitrary HTML and React components are not accepted.
+- `permissions` is checked at the host API boundary; supported capabilities are documented in `docs/modding/permissions.md`.
+- UI pages use a validated component catalog (`text`, `image`, `heading`, `button`, `toggle`, `input`, `select`, `progress`, `stack`, `card`). Arbitrary HTML and React components are not accepted in standard extension UI.
+- `updates.manifestUrl` is an HTTPS update feed. Its ID and SemVer version must match the extension. `updates.autoInstall` enables opt-in ZIP replacement; the package is staged and its manifest identity, paths, and entry point are checked before it replaces the installed folder.
 - The parser rejects manifests larger than 256 KiB and caps list sizes.
 - Mod state is stored in app data at `NoLoader/settings.json` with schema version `1`, a safe-mode flag, and disabled mod folder names. Updates preserve unknown JSON fields.
 - The worker host caps startup at 32 mods, 32 pages per mod, 32 navigation items per mod, 100 API messages per second, and 128 KiB per API message.
 
-See [`docs/modding/manifest.md`](docs/modding/manifest.md) for the JSON example and validation behavior. The loader, UI host, worker boundary, safe mode, and native file-system commands are implemented; native build and runtime verification remain outstanding.
+See [`docs/modding/manifest.md`](docs/modding/manifest.md) and the [first-extension guide](docs/modding/getting-started.md) for the JSON contract and a complete tutorial. The loader, UI host, worker boundary, update installer, safe mode, and native file-system commands are implemented. `launcher.clientRuntime` intentionally provides full client-webview execution; workers are not an operating-system sandbox. See [security limits](docs/modding/security.md).
 
 ## SQLite schema
 

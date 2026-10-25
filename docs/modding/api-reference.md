@@ -1,6 +1,6 @@
 # NoLoader extension API, version 6
 
-An extension exports `activate(api)` from its bundled ES module. It runs in an isolated Web Worker and communicates with NoRisk Client through a private host channel. The public TypeScript declarations are in [`sdk/types/no-loader.d.ts`](../../sdk/types/no-loader.d.ts).
+An extension exports `activate(api)` from its bundled ES module. A **standard-trust** extension runs in a dedicated Web Worker and communicates with NoRisk Client through a private host channel. A high-trust import runs directly in the launcher webview and bypasses the API permission boundary; reserve it for code you own or have audited. The public TypeScript declarations are in [`sdk/types/no-loader.d.ts`](../../sdk/types/no-loader.d.ts).
 
 ## Launcher UI
 
@@ -90,6 +90,6 @@ For interactive tools, `api.system.process.start(request)` returns a managed ses
 
 ## Manifest and lifecycle
 
-See the [manifest reference](manifest.md), [getting started guide](getting-started.md), and [permission list](permissions.md). The manifest declares requested capabilities, exact dependencies and launcher compatibility. API calls without the corresponding permission fail with an error. Extensions can return a cleanup function from `activate(api)`; all registered UI, events, and worker resources are cleared on stop.
+See the [manifest reference](manifest.md), [getting started guide](getting-started.md), and [permission list](permissions.md). `apiVersion` selects the NoLoader API contract; `launcherVersions` lists exact extension-host versions. An optional `launcherVersionRange` can declare a range that the author has verified. The manifest also declares requested capabilities and exact dependencies. API calls without the corresponding permission fail with an error. Extensions can return a cleanup function from `activate(api)`; all registered UI, events, and worker resources are cleared on stop.
 
 NoLoader extensions extend NoRisk Client and its desktop integration; this API does not create or install Minecraft mods. Minecraft profile launch is available as a normal launcher action.

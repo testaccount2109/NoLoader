@@ -20,7 +20,7 @@ NoLoader extensions declare the capabilities they need in `noloader.mod.json`. M
 | `system.clipboard` | `clipboard.readText`, `clipboard.writeText` |
 | `system.dialog` | `dialogs.openFile`, `openDirectory`, `saveFile`, `confirm` |
 | `system.files` | `system.files.*` |
-| `system.process` | `system.process.run`, `spawn`, `open` |
+| `system.process` | `system.process.run`, `spawn`, `start`, `read`, `write`, `close`, `open` |
 | `network.http` | `network.request` |
 | `storage.mod` | `storage.get`, `storage.set`, `storage.delete` |
 | `events.publish` | `events.emit` |
@@ -42,4 +42,8 @@ The extension host applies manifest checks before forwarding these calls. The wo
 
 `storage.mod` gives each extension a persistent JSON store bound to its manifest ID. Values are limited to 64 KiB and the complete store to 256 KiB. `events.publish` and `events.subscribe` exchange transient, namespaced JSON events between running extensions.
 
-Permissions are a review aid and API gate, not a sandbox. See the [security status](security.md).
+## Request permissions carefully
+
+Start with an empty `permissions` list and add a capability only when code needs it. For example, a page with a button needs `ui.pages` and often `ui.navigation`; reading profile information needs `launcher.profiles.read`; opening a native file picker needs `system.dialog`. The manifest parser rejects unknown permission names. In standard trust mode, a request made without its permission fails in the host API and returns an error to the extension.
+
+Permissions are a review aid and API gate, not a sandbox. They do not limit direct operating-system actions performed by a process started with `system.process`. High-trust imports bypass the standard extension API boundary and should be treated as fully trusted launcher code. See the [security status](security.md).

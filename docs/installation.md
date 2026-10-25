@@ -10,12 +10,12 @@ Before replacing an existing folder, the installer asks for confirmation. It ver
 
 ## Installing extensions
 
-The NoLoader manager supports unpacked extensions. Put each extension in its own subfolder under the existing `mods` data directory. See the [extension guide](modding/getting-started.md) and the manifest, API, lifecycle, permissions, and security references in `docs/modding/`.
+The NoLoader manager supports unpacked extensions. Put each extension in its own subfolder under the existing `mods` data directory. The easiest way to find the correct folder is **NoLoader → Open extensions folder**. Copy the extension folder with its `noloader.mod.json` and generated `dist/` files inside it, then refresh the mod manager and enable it. See the [first-extension tutorial](modding/getting-started.md), the [manifest reference](modding/manifest.md), [API reference](modding/api-reference.md), [lifecycle](modding/lifecycle.md), [permissions](modding/permissions.md), and [security notes](modding/security.md).
 
 Any distributed build is an unofficial community fork. Source and bundled runtime notices are documented in [third-party software notes](third-party.md); the launcher uses NoRisk services and retains their upstream identifiers.
 
 ## Build and release status
 
-The launcher source can be built with the upstream Tauri process after installing Node, Yarn, Rust, and the platform prerequisites. See the [development guide](development.md). The source is based on official NoRisk Launcher `v0.6.29` at upstream commit `bfc2e0564f9c0c96d3ce9062deab316647932c64`. NoLoader extension compatibility is tracked separately as `0.6.30-noloader.4`; signed launcher releases use their release-tag version so the built-in updater can distinguish updates.
+The launcher source can be built with the Tauri process after installing Node, Yarn, Rust, and the platform prerequisites. See the [development guide](development.md). The source is based on official NoRisk Launcher `v0.6.29` at upstream commit `bfc2e0564f9c0c96d3ce9062deab316647932c64`. NoLoader extensions check compatibility against the host version `0.6.30-noloader.4`; signed product releases use separate release-tag versions such as `1.0.11` so the built-in updater can distinguish updates.
 
-The installer verifies signed release metadata. The public source fork includes a pinned catalog key and a Windows release workflow that publishes the launcher, installer, and signed catalog. The release workflow supplies `NOLOADER_RELEASE_CATALOG_URL` and `NOLOADER_RELEASE_PUBLIC_KEY_PEM`; its signing secret is never embedded in the installer.
+The installer verifies signed release metadata. The public source fork includes a pinned catalog key and a Windows release workflow that publishes the launcher, installer, and signed catalog. The [latest release](https://github.com/testaccount2109/noriskclient-launcher/releases/latest) is NoLoader Launcher 1.0.11 as of October 25, 2026. The release workflow supplies `NOLOADER_RELEASE_CATALOG_URL` and `NOLOADER_RELEASE_PUBLIC_KEY_PEM`; private signing secrets are never embedded in the installer.

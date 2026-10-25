@@ -1,64 +1,54 @@
-# NoLoader architecture and repository analysis
+# NoLoader architecture
 
-Status: Phase 0 analysis and the first integrated NoLoader milestone, based on upstream commit `bfc2e0564f9c0c96d3ce9062deab316647932c64` (`v3`).
+NoLoader is a launcher extension framework integrated into the NoRisk Client desktop application. It is made of a TypeScript/React user interface, a Rust/Tauri desktop host, a public TypeScript API for extension authors, and a signed Windows installer/release pipeline. This page describes how those pieces fit together; use the [extension tutorial](modding/getting-started.md) if your goal is to make a mod.
 
-## Repository and licensing
+## What an extension is
 
-The working copy is the official [NoRiskClient/noriskclient-launcher](https://github.com/NoRiskClient/noriskclient-launcher) repository, cloned to `NoLoader/` because no launcher checkout was present in the workspace. The checked-in `LICENSE` is GPL-3.0. The upstream README says this applies to source code in the clean repository and warns that additional source used during development or compilation may have separate rights. NoLoader changes and any redistributed launcher therefore need source disclosure and a separate review of bundled/runtime components and their terms.
+An extension is a folder in the launcher's NoLoader data directory. It contains a strict JSON manifest, a bundled JavaScript ES module, and optional CSS/assets. The manifest supplies a stable ID and version, names the entry point, declares the NoLoader API and launcher host versions supported, and lists requested permissions.
 
-The commit records `noriskclient-backend` as a gitlink at `7f83c6399b778e69443bfa67ff2d7d8be4c441d4`, but this checkout has no `.gitmodules` file and the directory is empty. Git cannot resolve the submodule URL. This is an upstream checkout issue to resolve before relying on any backend content; no replacement source or URL is assumed here.
+Extensions run with the launcher, not inside the Minecraft game. They cannot directly import React components into the launcher UI. Instead, standard extensions run in dedicated Web Workers and ask the host to register validated data-only pages, widgets, buttons, and styles through the public API. The host translates permitted API requests into narrowly scoped Tauri commands.
 
-There is no root `AGENTS.md`. The always-applied Cursor rule at `.cursor/rules/noriskclient-launcher.mdc` asks contributors to read and maintain `noriskcient-launcher.md`, including the complete SQLite schema. That referenced file was absent, so it is being established at the requested path and records the schema found in the checked-in SQL migrations.
+## Startup and extension flow
 
-## Confirmed stack and integration points
+1. `NoLoaderProvider` asks the native host to read the extensions folder and per-user settings.
+2. The frontend validates each manifest and resolves duplicate IDs, API/host compatibility, conflicts, dependencies, and dependency cycles.
+3. Declared HTTPS update feeds are checked. An extension opts into ZIP replacement with `updates.autoInstall: true`; otherwise new versions are reported with links.
+4. Compatible enabled extensions are loaded in deterministic dependency order. Their single bundled module is executed in a worker with the NoLoader API.
+5. Every registration and API request is checked against the extension's manifest permissions and descriptor limits. On stop or refresh, workers and registrations are cleaned up.
 
-| Area            | Repository evidence                                                                                                                                                      |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Frontend        | React 18.3.1, TypeScript `~5.6.2`, Vite 6, React Router 7, Zustand 5                                                                                                     |
-| Package manager | Yarn Classic 1.22, `yarn.lock`                                                                                                                                           |
-| Desktop shell   | Tauri 2; Rust package edition 2021, SQLx SQLite                                                                                                                          |
-| UI entry        | `src/main.tsx` mounts `RouterProvider`; `src/lib/router.tsx` owns the hash routes; `src/App.tsx` and `src/components/layout/AppLayout.tsx` provide the application shell |
-| Native entry    | `src-tauri/src/main.rs` configures Tauri setup and the IPC handler; `src-tauri/src/lib.rs` declares native modules                                                       |
-| State           | SQLite migrations live in `src-tauri/migrations`; several other stores are file-backed                                                                                   |
-| Frontend tests  | Upstream had no frontend test runner; NoLoader adds a dev-only `tsx` runner for Node's built-in `node:test`                                                              |
-| Native tests    | Rust integration tests exist under `src-tauri/tests`                                                                                                                     |
+The main integration points are:
 
-The main Tauri capability grants the launcher window broad filesystem access, including read/write scopes for user locations, and process/plugin access. NoLoader therefore dynamically imports mod ES modules in dedicated Web Workers and never imports them into the launcher React context. The module receives only the NoLoader API; the host communicates with the worker bootstrap through a private `MessagePort` and validates API permissions and UI descriptors. This boundary does not provide an OS sandbox or hard CPU/memory quotas. See the current [security status](modding/security.md) and [threat model](security/threat-model.md).
+| Area | Source |
+| --- | --- |
+| Strict manifest and SemVer validation | `src/noloader/core/manifest.ts` |
+| Compatibility and dependency graph | `src/noloader/core/dependency-resolver.ts` |
+| UI descriptor and stylesheet validation | `src/noloader/core/ui-extension.ts`, `style-extension.ts` |
+| Worker API and private message channel | `src/noloader/runtime/mod-worker.ts` |
+| Discovery, lifecycle, API routing, permissions | `src/noloader/NoLoaderContext.tsx` |
+| Extension manager and host-rendered UI | `src/noloader/NoLoaderPages.tsx`, `ModUiTree.tsx` |
+| Native folder access, updates, storage, desktop APIs | `src-tauri/src/noloader.rs` |
+| Public extension types and examples | `sdk/types/`, `sdk/` |
 
-The Tauri updater has no configured endpoints. The installer uses its own versioned signed catalog. The public fork now pins a P-256 verification key and has a release workflow, but no public launcher artifact or catalog has been published yet.
+## Compatibility and versioning
 
-## Baseline environment and commands
+Three numbers have different purposes:
 
-The upstream README lists Node 18+, stable Rust, Yarn, `yarn install`, `yarn tauri dev`, and `yarn tauri build`. This environment has Node `v24.16.0`, Yarn `1.22.22`, a local .NET SDK `10.0.402`, and an installed Rust toolchain. The Windows Tauri build and NoLoader Rust tests have completed.
+- **Product release**, such as `1.0.11`, identifies the downloadable NoLoader Launcher app.
+- **Extension host version**, currently `0.6.30-noloader.4`, is checked against `launcherVersions` or `launcherVersionRange` in an extension manifest.
+- **NoLoader API version**, currently `6`, identifies methods and capabilities available to extension code. Current builds retain support for older APIs 1 through 5.
 
-`yarn install --frozen-lockfile` completed. It reported existing unmet peer dependency warnings for `@types/three` and a Yarn workspace warning. The baseline `node node_modules/typescript/bin/tsc --noEmit` passed. The baseline `node node_modules/vite/bin/vite.js build` passed and emitted a production frontend bundle, but reported existing warnings: `installProfile` is imported but not exported, CSS contains literal `${getHoverBoxShadow()}` / `${getActiveBoxShadow()}` values, two imports are both static and dynamic, and two output chunks exceed 2.5 MB. The configured `prebuild` and Tauri build scripts also stage native capture dependencies and invoke Cargo, so they are not a frontend-only baseline command.
+An extension author can list exact compatible host versions or provide a constrained SemVer range. NoLoader cannot determine automatically that a launcher update did not affect an extension; a range is the author's compatibility promise. See [manifest version rules](modding/manifest.md).
 
-Windows build setup downloads a pinned native dependency archive and checks its SHA-256 in `scripts/setup-native-deps.mjs`; `scripts/stage-native-deps.mjs` invokes Cargo and stages binaries. These scripts were inspected before attempting them. Do not report a full app build based only on a TypeScript or Vite build.
+## Isolation and trust
 
-## Integration plan to validate during implementation
+Worker-based extensions do not receive the main launcher DOM, React state, or Tauri command object. They still execute code with the user's account and can make network calls if allowed. `launcher.clientRuntime` deliberately executes a module in the real launcher webview and is full client-code access. `system.files` and `system.process` can read/modify user-accessible files and start programs. These are powerful capabilities, not sandboxed APIs. Review [permissions](modding/permissions.md) and [security limits](modding/security.md) before granting them.
 
-1. Keep the NoLoader core in a dedicated frontend module tree and add only the narrow integration points required by the actual router and app shell.
-2. Keep manifest parsing, compatibility checks, dependency resolution, and lifecycle state separate from React view components.
-3. Add native filesystem operations only through dedicated Tauri commands with path validation. Do not grant mods arbitrary native commands or duplicate loader logic in the installer.
-4. Define a versioned manifest and API from the needs of a working example mod; do not document suggested APIs before they exist.
-5. Prove how runtime entry points can be loaded in the packaged Tauri app, and verify the security boundary before describing mods as isolated.
-6. Keep the installer as a separate concern that consumes signed or otherwise verifiable release metadata for a NoLoader-prepared launcher build. Do not fall back to arbitrary upstream releases or overwrite existing installs silently.
+## Installer and releases
 
-The integrated framework includes strict manifest parsing, SemVer comparison, API 1–5 compatibility, deterministic dependency resolution, private-port extension workers, host-rendered pages and widgets, full client-renderer execution by explicit capability, standalone windows, extension storage and events, native PC integrations, safe mode, and startup loading. Extensions can choose bounded UI descriptors or request direct client JavaScript execution for unrestricted custom UI and runtime changes. The framework also exposes PC files/processes, dialogs, clipboard, notifications, external links, and standalone extension windows. The SDK includes a full-trust sample that exercises custom UI, files, dialogs, and processes. Windows installer source verifies signed release metadata, preserves previous folders, and can restore the recorded original NoRisk folder after multiple updates.
+The Windows installer is in `apps/installer`. It obtains a signed catalog from the `noloader-catalog` branch and verifies catalog signature, artifact length, and SHA-256 before staging and replacing the selected launcher folder. Backups allow restoration of the original NoRisk launcher. Tagged `noloader-v*` releases use `.github/workflows/noloader-release.yml` to build the prepared launcher, installer, updater signature/manifest, and signed catalog. The latest published release is listed on the [GitHub Releases page](https://github.com/testaccount2109/noriskclient-launcher/releases).
 
-The frontend integration lives in `src/lib/router.tsx`, `src/components/layout/AppLayout.tsx`, `src/main.tsx`, and `src/noloader/`. Native commands are declared in `src-tauri/src/noloader.rs` and registered from `src-tauri/src/main.rs`.
+The signed catalog key and Tauri updater signing key are separate GitHub Actions secrets. Private signing keys must never be copied into the repository or distributed with a mod. See [installation](installation.md) and [release process](releases.md).
 
-## Open questions and risks
+## Repository and license
 
-- The `noriskclient-backend` gitlink has no mapping or checked-out source in this commit. Confirm its intended source before any build or behavior that depends on it.
-- Workers prevent direct access to the launcher DOM and Tauri bridge, but they do not provide hard resource quotas. Platform behavior and CSP enforcement need native runtime verification.
-- No upstream frontend test framework was configured. The NoLoader core uses Node's built-in `node:test` API through a dev-only TypeScript runner; no test framework or runtime dependency was added.
-- The public source fork has published signed Windows launcher releases. The installer checks the signed catalog, while the launcher uses a separate Tauri update key and the fork's `latest.json` release manifest.
-- The brief names a Windows `Noloader.exe` installer, while upstream packaging targets Windows, macOS, and Linux. Treat Windows as the initial installer target unless later requirements establish otherwise.
-- License compatibility of every shipped dependency and native binary must be checked before redistributing a prepared build.
-
-## Current verification status
-
-Verification instructions and current checks are documented in [development](development.md). Historical milestones above describe earlier implementation snapshots.
-
-The source branch is public at `https://github.com/testaccount2109/noriskclient-launcher`. The release workflow builds the Windows launcher archive, signed Tauri update, installer, and signed catalog. A successful build does not complete a legal review of every bundled dependency; retain the packaged license notices and verify upstream component source availability before announcing binary releases.
+This is a community fork based on NoRisk Launcher upstream commit `bfc2e0564f9c0c96d3ce9062deab316647932c64`. Its source is published under the repository's GPL-3.0 license. NoLoader is unofficial and is not affiliated with or endorsed by NoRisk Client. Bundled native components and external services have their own terms; see [third-party notices](third-party.md) before redistributing a build.
