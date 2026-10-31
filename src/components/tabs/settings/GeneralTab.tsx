@@ -18,9 +18,10 @@ import { PERMISSION } from "../../../constants/permissions";
 import { invalidateAnalyticsCache } from "../../../services/analytics-service";
 import { LANGUAGE_OPTIONS, type SupportedLanguage } from "../../../i18n";
 import { useSettingsConfig, useSettingsKeywords } from "./settings-context";
-import { isWindows } from "../../../utils/platform";
+import { supportsClips } from "../../../utils/platform";
 import { LAUNCHER_MODS } from "../../../constants/launcher-mods";
 import { useLauncherModStore } from "../../../store/launcher-mod-store";
+import { useCapturePermissionsReady } from "../../../store/capture-permissions-store";
 
 export function GeneralTab() {
   const { t } = useTranslation();
@@ -31,6 +32,7 @@ export function GeneralTab() {
   const { showModal, hideModal } = useGlobalModal();
   const launcherModEnabled = useLauncherModStore((state) => state.enabled);
   const setLauncherModEnabled = useLauncherModStore((state) => state.setEnabled);
+  const clipPermissionsReady = useCapturePermissionsReady();
   const { isThemeActive } = useLauncherTheme();
   const isAccentColorDisabled = isThemeActive;
 
@@ -144,10 +146,10 @@ export function GeneralTab() {
             size="md"
           />
         </SettingRow>
-        {isWindows() && (
+        {supportsClips() && (
           <SettingRow
             label={t("settings.clips.enabled")}
-            description={t("settings.clips.enabled.short")}
+            description={t(clipPermissionsReady ? "settings.clips.enabled.short" : "settings.clips.permissions.blocked")}
             searchKeywords={kw(
               "settings.clips.enabled",
               "clips",
@@ -160,7 +162,7 @@ export function GeneralTab() {
             disabled={saving}
           >
             <ToggleSwitch
-              checked={tempConfig?.clips?.enabled || false}
+              checked={Boolean(tempConfig?.clips?.enabled) && clipPermissionsReady}
               onChange={(checked) =>
                 tempConfig &&
                 setTempConfig({
@@ -168,7 +170,7 @@ export function GeneralTab() {
                   clips: { ...tempConfig.clips, enabled: checked },
                 })
               }
-              disabled={saving}
+              disabled={saving || !clipPermissionsReady}
               size="md"
             />
           </SettingRow>
@@ -236,6 +238,19 @@ export function GeneralTab() {
           <ToggleSwitch
             checked={tempConfig?.hide_on_process_start || false}
             onChange={(checked) => tempConfig && setTempConfig({ ...tempConfig, hide_on_process_start: checked })}
+            disabled={saving}
+            size="md"
+          />
+        </SettingRow>
+        <SettingRow
+          label={t("settings.close_to_tray")}
+          description={t("settings.close_to_tray.tooltip")}
+          searchKeywords={kw("settings.close_to_tray", "tray", "close", "schliessen", "hintergrund", "background")}
+          disabled={saving}
+        >
+          <ToggleSwitch
+            checked={tempConfig?.close_to_tray || false}
+            onChange={(checked) => tempConfig && setTempConfig({ ...tempConfig, close_to_tray: checked })}
             disabled={saving}
             size="md"
           />

@@ -16,9 +16,9 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use crate::commands::analytics_command::track_analytics_event;
 use crate::commands::font_command::list_system_fonts;
 use crate::commands::process_command::{
-    fetch_crash_report, focus_main_window, get_process, get_process_log_cursor, get_processes,
-    get_processes_by_profile, open_minecraft_log_window, open_single_log_window, set_discord_state,
-    stop_process,
+    close_main_window_to_tray, fetch_crash_report, focus_main_window, get_process,
+    get_process_log_cursor, get_processes, get_processes_by_profile, open_minecraft_log_window,
+    open_single_log_window, set_discord_state, stop_process,
 };
 use commands::minecraft_auth_command::{
     begin_login, cancel_login, get_accounts, get_active_account, is_flatpak, remove_account,
@@ -166,10 +166,6 @@ async fn main() {
     info!("Starting NoRiskClient Launcher...");
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             let logged_args: Vec<String> = argv
                 .iter()
@@ -188,24 +184,22 @@ async fn main() {
                 return;
             }
 
-            match app.get_webview_window("main") {
-                Some(window) => {
-                    if let Err(e) = window.show() {
-                        error!("SingleInstance: Failed to show main window: {}", e);
+            utils::window_focus::show_main_window(app);
+        }))
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_cli::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && state::config_state::closes_to_tray() {
+                    api.prevent_close();
+                    if let Err(e) = window.hide() {
+                        error!("Failed to hide the main window on close: {}", e);
                     }
-                    if let Err(e) = window.unminimize() {
-                        error!("SingleInstance: Failed to unminimize main window: {}", e);
-                    }
-                    if let Err(e) = window.set_focus() {
-                        error!("SingleInstance: Failed to focus main window: {}", e);
-                    }
-                    info!("SingleInstance: Brought existing window to front.");
-                }
-                None => {
-                    info!("SingleInstance: Main window not yet available, still starting up. Ignoring.");
                 }
             }
-        }))
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
@@ -230,26 +224,16 @@ async fn main() {
                 .tooltip("NoRisk Client Launcher")
                 .icon(app.default_window_icon().unwrap().clone())
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        match app.get_webview_window("main") {
-                            Some(window) => {
-                                if let Err(e) = window.show() {
-                                    error!("Tray menu: Failed to show window: {}", e);
-                                }
-                                if let Err(e) = window.unminimize() {
-                                    error!("Tray menu: Failed to unminimize window: {}", e);
-                                }
-                                if let Err(e) = window.set_focus() {
-                                    error!("Tray menu: Failed to focus window: {}", e);
-                                }
-                            }
-                            None => {
-                                error!("Tray menu: Main window not found - application in inconsistent state");
-                            }
-                        }
-                    }
+                    "show" => utils::window_focus::show_main_window(app),
                     "quit" => {
-                        app.exit(0);
+                        if app.get_webview_window("clip_editor").is_some() {
+                            use tauri::Emitter;
+                            if app.emit_to("main", "quit_requested", ()).is_err() {
+                                app.exit(0);
+                            }
+                        } else {
+                            app.exit(0);
+                        }
                     }
                     _ => {}
                 })
@@ -270,15 +254,7 @@ async fn main() {
                                         error!("Tray click: Failed to hide window: {}", e);
                                     }
                                 } else {
-                                    if let Err(e) = window.show() {
-                                        error!("Tray click: Failed to show window: {}", e);
-                                    }
-                                    if let Err(e) = window.unminimize() {
-                                        error!("Tray click: Failed to unminimize window: {}", e);
-                                    }
-                                    if let Err(e) = window.set_focus() {
-                                        error!("Tray click: Failed to focus window: {}", e);
-                                    }
+                                    utils::window_focus::show_main_window(app);
                                 }
                             }
                             None => {
@@ -290,23 +266,7 @@ async fn main() {
                         button: MouseButton::Left,
                         ..
                     } => {
-                        let app = tray.app_handle();
-                        match app.get_webview_window("main") {
-                            Some(window) => {
-                                if let Err(e) = window.show() {
-                                    error!("Tray double-click: Failed to show window: {}", e);
-                                }
-                                if let Err(e) = window.unminimize() {
-                                    error!("Tray double-click: Failed to unminimize window: {}", e);
-                                }
-                                if let Err(e) = window.set_focus() {
-                                    error!("Tray double-click: Failed to focus window: {}", e);
-                                }
-                            }
-                            None => {
-                                error!("Tray double-click: Main window not found - application in inconsistent state");
-                            }
-                        }
+                        utils::window_focus::show_main_window(tray.app_handle());
                     }
                     _ => {}
                 })
@@ -441,7 +401,7 @@ async fn main() {
                     utils::mod_cache_cleanup::run_startup_cleanup().await;
                 });
 
-                #[cfg(windows)]
+                #[cfg(any(windows, target_os = "macos"))]
                 commands::clip_commands::start_on_launch(state_init_app_handle.clone());
                 info!("Attempting to show main window...");
                 if let Some(main_window) = state_init_app_handle.get_webview_window("main") {
@@ -552,6 +512,7 @@ async fn main() {
             abort_profile_launch,
             is_profile_launching,
             get_processes,
+            close_main_window_to_tray,
             get_process,
             get_processes_by_profile,
             stop_process,
@@ -854,6 +815,7 @@ async fn main() {
             commands::clip_commands::capture_supported,
             commands::capture_permissions::capture_permissions,
             commands::capture_permissions::capture_open_permission_settings,
+            commands::capture_permissions::capture_reset_permissions,
             commands::clip_commands::capture_encoder_capabilities,
             commands::clip_commands::capture_show_overlay,
             commands::clip_commands::capture_hide_overlay,
@@ -883,6 +845,11 @@ async fn main() {
             |app_handle, event| {
                 if matches!(event, tauri::RunEvent::Exit) {
                     utils::screen_time::report_before_exit();
+                }
+
+                #[cfg(target_os = "macos")]
+                if let tauri::RunEvent::Reopen { has_visible_windows: false, .. } = event {
+                    utils::window_focus::show_main_window(app_handle);
                 }
 
                 #[cfg(target_os = "macos")]
