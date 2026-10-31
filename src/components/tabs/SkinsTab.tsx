@@ -7,7 +7,7 @@ import { setDiscordState } from "../../utils/discordRpc";
 import type { MinecraftProfile, TexturesData } from "../../types/minecraft";
 import type { MinecraftSkin, SkinVariant } from "../../types/localSkin";
 import { useMinecraftAuthStore } from "../../store/minecraft-auth-store";
-import { MinecraftSkinService } from "../../services/minecraft-skin-service";
+import { MinecraftSkinService, type SkinCatalogEntry } from "../../services/minecraft-skin-service";
 import { Button } from "../ui/buttons/Button";
 import { IconButton } from "../ui/buttons/IconButton";
 import { Icon } from "@iconify/react";
@@ -24,6 +24,8 @@ import { AddSkinModal } from "../modals/AddSkinModal";
 import { cn } from "../../lib/utils";
 import { useSkinPreview } from "../../hooks/useSkinPreview";
 import { parseErrorMessage } from "../../utils/error-utils";
+import { useLauncherModStore } from "../../store/launcher-mod-store";
+import { SkindexBrowserModal } from "../modals/SkindexBrowserModal";
 
 function useDelayedFlag(active: boolean, delayMs: number): boolean {
   const [shown, setShown] = useState(false);
@@ -324,6 +326,7 @@ export function SkinsTab() {
   const { showModal, hideModal } = useGlobalModal();
   const { t } = useTranslation();
   const { selectedSkinId, setSelectedSkinId } = useSkinStore();
+  const skinApiEnabled = useLauncherModStore((state) => state.enabled["skin-api"]);
 
   useEffect(() => { setDiscordState("Browsing Skins"); }, []);
   const [skinData, setSkinData] = useState<MinecraftProfile | null>(null);
@@ -491,6 +494,32 @@ export function SkinsTab() {
     }
   };
 
+  const importSkinFromCatalog = async (catalogSkin: SkinCatalogEntry, variant: SkinVariant) => {
+    try {
+      const importedSkin = await MinecraftSkinService.addSkinLocally(
+        catalogSkin.downloadUrl,
+        catalogSkin.name,
+        variant,
+        `The Skindex · ${catalogSkin.pageUrl}`,
+      );
+      await loadLocalSkins();
+      toast.success(t("launcher_mods.skin_api.added", { name: importedSkin.name }));
+    } catch (error) {
+      console.error("Failed to import a community skin:", error);
+      toast.error(t("launcher_mods.skin_api.add_failed", { error: parseErrorMessage(error) }));
+    }
+  };
+
+  const openSkinApiBrowser = () => {
+    showModal(
+      "skindex-browser-modal",
+      <SkindexBrowserModal
+        onClose={() => hideModal("skindex-browser-modal")}
+        onImport={importSkinFromCatalog}
+      />,
+    );
+  };
+
   const handleDeleteSkin = async (skinId: string, skinName: string) => {
     const deletePromise = async () => {
       const removed = await MinecraftSkinService.removeSkin(skinId);
@@ -611,7 +640,18 @@ export function SkinsTab() {
 
               {/* Action Button */}
               <div className="flex items-center gap-3">
-                {addSkinButton}
+                {activeAccount && skinApiEnabled && (
+                  <button
+                    type="button"
+                    onClick={openSkinApiBrowser}
+                    className="flex items-center gap-2 rounded-lg border border-fuchsia-200/20 bg-fuchsia-300/[0.08] px-4 py-2 font-smallcaps text-base text-fuchsia-100 transition hover:border-fuchsia-200/40 hover:bg-fuchsia-300/[0.14]"
+                    title={t("launcher_mods.skin_api.open")}
+                  >
+                    <Icon icon="solar:emoji-funny-circle-bold" className="h-4 w-4" />
+                    <span>SkinAPI</span>
+                  </button>
+                )}
+                {activeAccount && addSkinButton}
               </div>
             </div>
           </div>

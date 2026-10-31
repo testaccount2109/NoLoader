@@ -45,6 +45,10 @@ export interface ContentTileProps {
   onSwitchVersion: (v: UnifiedVersion) => void;
   updateAvailable: UnifiedVersion | null;
   isSwitchingVersion?: boolean;
+  // Mod-group (folder) badge + extra menu entries for group assignment.
+  // Rendered only when provided, so other content types stay untouched.
+  groupBadge?: string | null;
+  groupMenu?: React.ReactNode;
 }
 
 export function ContentTile({
@@ -76,6 +80,8 @@ export function ContentTile({
   isQuickUpdating,
   noRiskStatus,
   overridesPack,
+  groupBadge,
+  groupMenu,
 }: ContentTileProps) {
   const { t } = useTranslation();
   const accentColor = useThemeStore((s) => s.accentColor);
@@ -177,6 +183,15 @@ export function ContentTile({
                 className="w-3 h-3 text-violet-300/70 flex-shrink-0"
               />
             </Tooltip>
+          )}
+          {groupBadge && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 h-5 rounded text-[10px] font-minecraft text-white/70 bg-white/5 border border-white/10 flex-shrink-0 max-w-32 truncate"
+              title={groupBadge}
+            >
+              <Icon icon="solar:folder-bold" className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">{groupBadge}</span>
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2 mt-1 text-xs font-minecraft">
@@ -302,6 +317,7 @@ export function ContentTile({
               </ThemedDropdownItem>
             </>
           )}
+          {groupMenu}
         </ThemedDropdown>
       </div>
     </div>

@@ -12,21 +12,17 @@ use std::sync::Arc;
 use tauri::Listener;
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
-use utils::updater_utils;
 
 use crate::commands::analytics_command::track_analytics_event;
 use crate::commands::font_command::list_system_fonts;
 use crate::commands::process_command::{
-    fetch_crash_report, focus_main_window, get_process, get_process_log_cursor,
-    get_processes, get_processes_by_profile, open_minecraft_log_window, open_single_log_window,
-    set_discord_state, stop_process,
+    fetch_crash_report, focus_main_window, get_process, get_process_log_cursor, get_processes,
+    get_processes_by_profile, open_minecraft_log_window, open_single_log_window, set_discord_state,
+    stop_process,
 };
 use commands::minecraft_auth_command::{
-    begin_login, cancel_login, get_accounts, get_active_account, is_flatpak, remove_account, set_active_account
-};
-use commands::twitch_command::{
-    twitch_available_scopes, twitch_begin_device_login, twitch_cancel_login, twitch_is_linked,
-    twitch_unlink,
+    begin_login, cancel_login, get_accounts, get_active_account, is_flatpak, remove_account,
+    set_active_account,
 };
 use commands::minecraft_command::{
     add_skin,
@@ -51,47 +47,53 @@ use commands::minecraft_command::{
 };
 use commands::profile_command::{
     abort_profile_launch, add_modrinth_content_to_profile, add_modrinth_mod_to_profile,
-    batch_check_content_installed, check_for_group_migration_command, check_world_lock_status, copy_profile, copy_world,
-    create_profile, delete_custom_mod, delete_mod_from_profile, delete_profile, delete_world,
-    export_profile, get_all_profiles_and_last_played, get_custom_mods, get_local_content,
-    get_local_datapacks, get_local_resourcepacks, get_local_shaderpacks, get_log_file_content,
-    get_norisk_packs, get_norisk_packs_resolved, get_profile, get_profile_directory_structure,
-    get_profile_log_files,
-    get_servers_for_profile,
-    get_default_memory_max_mb, get_standard_profiles, get_system_ram_mb, get_worlds_for_profile, import_local_mods,
-    import_profile, import_world, is_content_installed, is_profile_launching,
-    launch_profile, list_profile_backups, list_profile_screenshots, list_profiles, open_profile_folder,
-    open_profile_latest_log, preview_import_pack, refresh_norisk_packs, refresh_standard_versions,
-    repair_profile,
-    get_profile_store_status, reimport_profiles_from_legacy_json,
-    resolve_loader_version, restore_profile_backup, search_profiles, set_custom_mod_enabled, set_norisk_mod_status,
-    set_profile_mod_enabled, update_datapack_from_modrinth, update_modrinth_mod_version,
-    update_profile, update_resourcepack_from_modrinth, update_shaderpack_from_modrinth,
+    batch_check_content_installed, check_for_group_migration_command, check_world_lock_status,
+    copy_profile, copy_world, create_profile, delete_custom_mod, delete_mod_from_profile,
+    delete_profile, delete_world, export_profile, get_all_profiles_and_last_played,
+    get_custom_mods, get_default_memory_max_mb, get_local_content, get_local_datapacks,
+    get_local_resourcepacks, get_local_shaderpacks, get_log_file_content, get_norisk_packs,
+    get_norisk_packs_resolved, get_profile, get_profile_directory_structure, get_profile_log_files,
+    get_profile_store_status, get_servers_for_profile, get_standard_profiles, get_system_ram_mb,
+    get_worlds_for_profile, import_local_mods, import_profile, import_world, is_content_installed,
+    is_profile_launching, launch_profile, list_profile_backups, list_profile_screenshots,
+    list_profiles, open_profile_folder, open_profile_latest_log, preview_import_pack,
+    refresh_norisk_packs, refresh_standard_versions, reimport_profiles_from_legacy_json,
+    repair_profile, resolve_loader_version, restore_profile_backup, search_profiles,
+    set_custom_mod_enabled, set_norisk_mod_status, set_profile_mod_enabled,
+    update_datapack_from_modrinth, update_modrinth_mod_version, update_profile,
+    update_resourcepack_from_modrinth, update_shaderpack_from_modrinth,
+};
+use commands::twitch_command::{
+    twitch_available_scopes, twitch_begin_device_login, twitch_cancel_login, twitch_is_linked,
+    twitch_unlink,
 };
 
 // Use statements for registered commands only
-use commands::curseforge_commands::{get_curseforge_mods_by_ids, download_and_install_curseforge_modpack_command, get_curseforge_file_changelog_command, get_curseforge_mod_description_command};
+use commands::curseforge_commands::{
+    download_and_install_curseforge_modpack_command, get_curseforge_file_changelog_command,
+    get_curseforge_mod_description_command, get_curseforge_mods_by_ids,
+};
 
 use commands::modrinth_commands::{
-    check_modrinth_updates, check_mod_updates_unified_command, download_and_install_modrinth_modpack,
-    clear_content_cache_command, get_all_modrinth_versions_for_contexts, get_modrinth_tags_command,
-    get_modrinth_mod_versions,
-    get_modpack_versions_unified_command, get_modrinth_project_details, get_modrinth_project_members,
-    get_modrinth_versions_by_hashes, search_modrinth_mods,
-    search_modrinth_projects, search_mods_unified_command, get_mod_versions_unified_command,
-    switch_modpack_version_command
+    check_mod_updates_unified_command, check_modrinth_updates, clear_content_cache_command,
+    download_and_install_modrinth_modpack, get_all_modrinth_versions_for_contexts,
+    get_mod_versions_unified_command, get_modpack_versions_unified_command,
+    get_modrinth_mod_versions, get_modrinth_project_details, get_modrinth_project_members,
+    get_modrinth_tags_command, get_modrinth_versions_by_hashes, search_modrinth_mods,
+    search_modrinth_projects, search_mods_unified_command, switch_modpack_version_command,
 };
 
 use commands::file_command::{
     delete_file, get_icons_for_archives, get_icons_for_norisk_mods, list_all_mc_logs,
     list_crash_reports, list_launcher_logs, list_process_logs, open_file, open_file_directory,
-    read_file_bytes,
-    set_file_enabled,
+    read_file_bytes, set_file_enabled,
 };
 
 // Import config commands
 use commands::config_commands::{get_app_version, get_launcher_config, set_launcher_config};
-use commands::legal_commands::{acknowledge_legal_documents, acknowledge_legal_notice, get_legal_status};
+use commands::legal_commands::{
+    acknowledge_legal_documents, acknowledge_legal_notice, get_legal_status,
+};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -102,9 +104,9 @@ use commands::path_commands::{get_launcher_directory, resolve_image_path};
 
 // Import cape commands
 use commands::cape_command::{
-    browse_capes, check_is_moderator, delete_cape, download_template_and_open_explorer, equip_cape,
-    get_player_capes, unequip_cape, upload_cape, add_favorite_cape, remove_favorite_cape,
-    get_capes_by_hashes, get_owned_capes_list,
+    add_favorite_cape, browse_capes, check_is_moderator, delete_cape,
+    download_template_and_open_explorer, equip_cape, get_capes_by_hashes, get_owned_capes_list,
+    get_player_capes, remove_favorite_cape, unequip_cape, upload_cape,
 };
 
 use commands::cosmetic_command::{
@@ -116,7 +118,7 @@ use commands::icon_command::{
 
 // Import vanilla cape commands
 use commands::vanilla_cape_command::{
-    get_owned_vanilla_capes, get_currently_equipped_vanilla_cape, equip_vanilla_cape,
+    equip_vanilla_cape, get_currently_equipped_vanilla_cape, get_owned_vanilla_capes,
     get_vanilla_cape_info, refresh_vanilla_cape_data,
 };
 
@@ -124,16 +126,17 @@ use commands::vanilla_cape_command::{
 use commands::assets_command::get_or_download_asset_model;
 
 // Import NRC commands
-use commands::nrc_commands::{check_update_available_command, download_and_install_update_command, get_news_and_changelogs_command};
+use commands::nrc_commands::{
+    check_update_available_command, claim_advent_calendar_day_command, get_advent_calendar_command,
+    get_news_and_changelogs_command, get_unique_players_24h_command,
+};
 
 // Import Content commands
 use commands::content_command::{
     bulk_toggle_mod_updates, install_content_to_profile, install_local_content_to_profile,
     switch_content_version, toggle_content_from_profile, toggle_contents_from_profile,
+    toggle_mod_updates, uninstall_content_from_profile, uninstall_contents_from_profile,
     update_contents_from_profile,
-    uninstall_contents_from_profile,
-    toggle_mod_updates,
-    uninstall_content_from_profile,
 };
 
 // Import Java commands
@@ -143,13 +146,12 @@ use commands::java_command::{
 };
 
 use commands::friends_command::{
-    get_friends, get_pending_requests, get_friends_user, send_friend_request,
-    accept_friend_request, deny_friend_request, remove_friend, set_online_status,
-    toggle_friend_ping, update_privacy_setting, connect_friends_websocket,
-    disconnect_friends_websocket, is_friends_websocket_connected, get_or_create_chat,
-    get_private_chats, get_chat_messages, send_chat_message, edit_chat_message,
-    delete_chat_message, send_typing_indicator, add_message_reaction,
-    remove_message_reaction,
+    accept_friend_request, add_message_reaction, connect_friends_websocket, delete_chat_message,
+    deny_friend_request, disconnect_friends_websocket, edit_chat_message, get_chat_messages,
+    get_friends, get_friends_user, get_or_create_chat, get_pending_requests, get_private_chats,
+    is_friends_websocket_connected, remove_friend, remove_message_reaction, send_chat_message,
+    send_friend_request, send_typing_indicator, set_online_status, toggle_friend_ping,
+    update_privacy_setting,
 };
 
 #[tokio::main]
@@ -353,32 +355,12 @@ async fn main() {
             }*/
             // --- End .noriskpack handling on startup ---
 
-            // Task for State Init and Updater Window
+            // Initialize launcher state before showing the main window.
             let state_init_app_handle = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                // --- Create Updater Window (but keep hidden initially) ---
-                let updater_window = match updater_utils::create_updater_window(&state_init_app_handle).await {
-                    Ok(win) => {
-                        trace!("Updater window created successfully (initially hidden).");
-                        Some(win)
-                    }
-                    Err(e) => {
-                        error!("Failed to create updater window: {}", e);
-                        None
-                    }
-                };
-
-                // --- State Initialization ---
                 info!("Initiating state initialization...");
                 if let Err(e) = state::state_manager::State::init(Arc::new(state_init_app_handle.clone())).await {
                     error!("CRITICAL: Failed to initialize state: {}", e);
-                    if let Some(win) = updater_window {
-                        updater_utils::emit_status(&state_init_app_handle, "close", "Closing due to state init error.".to_string(), None);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                        if let Err(close_err) = win.close() {
-                            error!("Failed to close updater window after state init error: {}", close_err);
-                        }
-                    }
                     {
                         use tauri_plugin_dialog::{
                             DialogExt, MessageDialogButtons, MessageDialogKind,
@@ -461,49 +443,7 @@ async fn main() {
 
                 #[cfg(windows)]
                 commands::clip_commands::start_on_launch(state_init_app_handle.clone());
-
-                trace!("Attempting to retrieve launcher configuration for update check...");
-                match state::state_manager::State::get().await {
-                    Ok(state_manager_instance) => {
-                        let config = state_manager_instance.config_manager.get_config().await;
-                        let check_beta_channel = config.check_beta_channel;
-                        let mut auto_check_updates_enabled = config.auto_check_updates;
-
-                        // Disable auto-updates when running in Flatpak
-                        if updater_utils::is_flatpak() {
-                            info!("Running in Flatpak environment - disabling automatic updates (Flatpak handles updates through its own mechanism).");
-                            auto_check_updates_enabled = false;
-                        }
-
-                        if auto_check_updates_enabled {
-                            trace!("Initiating application update check (Channel determined by config: Beta={})...", check_beta_channel);
-                            updater_utils::check_for_updates(state_init_app_handle.clone(), check_beta_channel, updater_window.clone()).await;
-                            trace!("Update check process has finished.");
-                        } else {
-                            info!("Auto-check for updates is disabled in settings. Skipping update check.");
-                            // Ensure the updater window (if created) is closed if we skip the check.
-                            if let Some(win) = updater_window {
-                                updater_utils::emit_status(&state_init_app_handle, "close", "Auto-update disabled.".to_string(), None);
-                                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await; // Give time for emit to process
-                                if let Err(close_err) = win.close() {
-                                    error!("Failed to close updater window when skipping updates: {}", close_err);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("Failed to get global state for update check: {}.", e);
-                        if let Some(win) = updater_window {
-                            updater_utils::emit_status(&state_init_app_handle, "close", "Closing due to state fetch error.".to_string(), None);
-                            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-                            if let Err(close_err) = win.close() {
-                                error!("Failed to close updater window after state fetch error: {}", close_err);
-                            }
-                        }
-                    }
-                }
-
-                info!("Updater process finished. Attempting to show main window...");
+                info!("Attempting to show main window...");
                 if let Some(main_window) = state_init_app_handle.get_webview_window("main") {
                     match main_window.show() {
                         Ok(_) => {
@@ -750,7 +690,7 @@ async fn main() {
             get_app_version,
             get_news_and_changelogs_command,
             check_update_available_command,
-            download_and_install_update_command,
+            commands::skin_catalog_command::browse_skindex_skins,
             get_modrinth_tags_command,
             clear_content_cache_command,
             get_modrinth_versions_by_hashes,

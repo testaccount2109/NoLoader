@@ -46,6 +46,11 @@ import {
   mergeGridEntries,
   type GridEntry,
 } from "./local-content/contentGrid";
+import { ToggleSwitch } from "../../../ui/ToggleSwitch";
+import { ModGroupDialog } from "./local-content/ModGroupDialog";
+import { ModPresetsDialog } from "./local-content/ModPresetsDialog";
+import { useModGroups, type ModGroup } from "../../../../hooks/useModGroups";
+import { ThemedDropdown, ThemedDropdownItem, ThemedDropdownDivider, ThemedDropdownHeader } from "../shared/ThemedDropdown";
 
 preloadIcons([
   "solar:magnifer-linear", "solar:filter-bold", "solar:sort-vertical-bold",
@@ -159,6 +164,77 @@ export function LocalContentTabV3<T extends LocalContentItem>({
   const [hoverMenuId, setHoverMenuId] = useState<string | null>(null);
 
   const versionOptions = useVersionOptions();
+  const tileKey = useCallback((item: LocalContentItem): string => item.path_str || item.filename, []);
+
+  // ── Mod-Ordner (Explorer-Prinzip) — nur fuer Mods ─────────────────────
+  // Ordner erscheinen inline in der normalen Liste wie Mods. Klick auf einen
+  // Ordner geht hinein (nur dessen Mods sichtbar), Pfeil geht zurück.
+  // Achtung: echte Unterordner in mods/ wuerden vom Loader NICHT geladen,
+  // deshalb sind Ordner rein visuell (nrc-mod-groups.json in der Instanz).
+  const groupsEnabled = contentType === "Mod";
+  const modGroups = useModGroups(groupsEnabled ? profile?.id : undefined);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [groupDialog, setGroupDialog] = useState<{ mode: "create" | "rename"; groupId?: string } | null>(null);
+  const [pendingAssignItem, setPendingAssignItem] = useState<LocalContentItem | null>(null);
+  const [openManageGroupId, setOpenManageGroupId] = useState<string | null>(null);
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  const currentFolder = groupsEnabled
+    ? modGroups.groups.find((group) => group.id === currentFolderId) ?? null
+    : null;
+  const isBrowsing =
+    groupsEnabled && !manager.searchQuery.trim() && filter === "all" && !currentFolder;
+
+  // Profilwechsel → zurück zur Root-Ebene.
+  useEffect(() => {
+    setCurrentFolderId(null);
+  }, [profile?.id]);
+
+  const handleGroupDialogConfirm = useCallback((name: string) => {
+    if (!groupDialog) return;
+    if (groupDialog.mode === "create") {
+      const created = modGroups.createGroup(name);
+      if (created && pendingAssignItem) modGroups.assign(pendingAssignItem, created.id);
+      toast.success(t("mod_groups.created", { name }));
+    } else if (groupDialog.groupId) {
+      modGroups.renameGroup(groupDialog.groupId, name);
+    }
+    setGroupDialog(null);
+    setPendingAssignItem(null);
+  }, [groupDialog, modGroups, pendingAssignItem, t]);
+
+  const handleDeleteGroup = useCallback((groupId: string) => {
+    const group = modGroups.groups.find(g => g.id === groupId);
+    modGroups.deleteGroup(groupId);
+    setOpenManageGroupId(null);
+    if (group) toast.success(t("mod_groups.deleted", { name: group.name }));
+  }, [modGroups, t]);
+
+  // ── Direkt in einen Ordner installieren ─────────────────────────────
+  // Wird das Browse-Sheet aus einem Ordner heraus geöffnet, merkt sich der
+  // Tab den Vorher-Stand. Alles, was nach dem Schließen neu in der Liste
+  // auftaucht, landet automatisch in diesem Ordner.
+  const [addTargetGroupId, setAddTargetGroupId] = useState<string | null>(null);
+  const preAddSnapshotRef = useRef<Set<string> | null>(null);
+  const assignArmedRef = useRef(false);
+
+  const handleAddToGroup = (groupId: string) => {
+    preAddSnapshotRef.current = new Set(manager.items.map((i) => tileKey(i)));
+    setAddTargetGroupId(groupId);
+    setBrowseSheetOpen(true);
+  };
+
+  useEffect(() => {
+    if (!assignArmedRef.current) return;
+    assignArmedRef.current = false;
+    if (!addTargetGroupId || !preAddSnapshotRef.current) return;
+    const snapshot = preAddSnapshotRef.current;
+    preAddSnapshotRef.current = null;
+    const target = addTargetGroupId;
+    setAddTargetGroupId(null);
+    const fresh = manager.items.filter((i) => !snapshot.has(tileKey(i)));
+    for (const item of fresh) modGroups.assign(item, target);
+  }, [manager.items, addTargetGroupId, modGroups, tileKey]);
+
   const [switchingVersionFor, setSwitchingVersionFor] = useState<string | null>(null);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
 
@@ -318,6 +394,9 @@ export function LocalContentTabV3<T extends LocalContentItem>({
   }, []);
   const handleBrowseSheetClose = useCallback(() => {
     setBrowseSheetOpen(false);
+    // Falls das Sheet aus einem Ordner geöffnet wurde: beim nächsten
+    // Listen-Refresh neue Items automatisch zuordnen (siehe Effect oben).
+    assignArmedRef.current = true;
     manager.fetchData(true);
   }, [manager]);
 
@@ -326,12 +405,27 @@ export function LocalContentTabV3<T extends LocalContentItem>({
     [filter, manager.searchQuery, sync.mods],
   );
 
-  const gridEntries = useMemo(
+  const mergedGridEntries = useMemo(
     () => mergeGridEntries(visibleItems, visibleSyncMods, sortBy === "name" ? getDisplayFileName : null),
     [visibleItems, visibleSyncMods, sortBy, getDisplayFileName],
   );
 
-  const grouped = sync.mods.length > 0;
+  const gridEntries = useMemo(() => {
+    if (!groupsEnabled) return mergedGridEntries;
+    if (currentFolder) {
+      return mergedGridEntries.filter(
+        (entry) => entry.kind === "local" && modGroups.groupOf(entry.item)?.id === currentFolder.id,
+      );
+    }
+    if (isBrowsing) {
+      return mergedGridEntries.filter(
+        (entry) => entry.kind === "sync" || !modGroups.groupOf(entry.item),
+      );
+    }
+    return mergedGridEntries;
+  }, [groupsEnabled, mergedGridEntries, currentFolder, isBrowsing, modGroups]);
+
+  const grouped = sync.mods.length > 0 && !currentFolder;
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const toggleGroup = useCallback((id: string) => {
@@ -400,77 +494,10 @@ export function LocalContentTabV3<T extends LocalContentItem>({
   }, [hasSelection]);
 
   const batchBusy = manager.isBatchToggling || !!batchProgress;
-  const fabActions: FABActionConfig[] = [
-    { icon: "solar:play-bold",  label: t("profiles.v3.fab.enable"),  onClick: handleBatchEnable,  disabled: batchBusy },
-    { icon: "solar:pause-bold", label: t("profiles.v3.fab.disable"), onClick: handleBatchDisable, disabled: batchBusy },
-    ...(batchUpdateChecksConfig ? [{
-      icon: batchUpdateChecksConfig.shouldEnable ? "solar:volume-loud-bold" : "solar:volume-cross-bold",
-      label: t(batchUpdateChecksConfig.shouldEnable ? "profiles.v3.fab.resumeChecks" : "profiles.v3.fab.muteChecks"),
-      onClick: handleBatchToggleUpdateChecks,
-    } as FABActionConfig] : []),
-    {
-      icon: "solar:trash-bin-trash-bold",
-      label: manager.isBatchDeleting ? "…" : t("profiles.v3.fab.delete"),
-      tone: "danger",
-      onClick: manager.handleBatchDeleteSelected,
-      disabled: manager.isBatchDeleting || sync.selection.size > 0,
-    },
-  ];
-
-  const toolbarActions: ContentActionButton[] = [
-    ...(manager.updatableContentCount > 0 ? [{
-      id: "update-all",
-      label: manager.isUpdatingAll
-        ? t("profiles.v3.toolbar.updateAll")
-        : `${t("profiles.v3.toolbar.updateAll")} (${manager.updatableContentCount})`,
-      icon: manager.isUpdatingAll || manager.isCheckingUpdates ? "solar:refresh-bold" : "solar:refresh-circle-bold",
-      variant: "highlight" as const,
-      disabled: manager.isUpdatingAll,
-      loading: manager.isUpdatingAll || manager.isCheckingUpdates,
-      tooltip: t("profiles.v3.toolbar.updateAllTitle", { count: manager.updatableContentCount }),
-      onClick: manager.handleUpdateAllAvailableContent,
-    }] : []),
-    {
-      id: "refresh",
-      icon: "solar:refresh-bold",
-      variant: "text" as const,
-      disabled: manager.isAnyTaskRunning,
-      loading: manager.isAnyTaskRunning,
-      tooltip: t("profiles.v3.toolbar.refresh"),
-      onClick: () => {
-        manager.fetchData(false);
-        void sync.reload();
-      },
-    },
-    ...(canBrowse ? [{
-      id: "add",
-      label: addContentButtonText,
-      icon: "solar:add-circle-bold",
-      variant: "highlight" as const,
-      tooltip: addContentButtonText,
-      onClick: handleAddClick,
-    }] : []),
-  ];
-
-  const renderGridEntry = (gridEntry: GridEntry<T>) => {
-    if (gridEntry.kind === "sync") {
-      const entry = gridEntry.entry;
-      const { platform, project_id: projectId } = entry;
-      return (
-        <SyncModTile
-          entry={entry}
-          sync={sync}
-          mcVersion={profile.game_version}
-          selectMode={hasSelection}
-          versionPicker={syncVersionPicker(entry)}
-          menuOpen={hoverMenuId === syncModKey(entry)}
-          onMenuToggle={(open) => setHoverMenuId(open ? syncModKey(entry) : null)}
-          onNameClick={platform && projectId ? () => navigate(`/mods/${platform}/${projectId}`) : undefined}
-        />
-      );
-    }
-    const item = gridEntry.item;
-    const key = localItemKey(item);
+  // Tile-Renderer (flache Grid-Ansicht + Gruppen-Ansicht teilen sich ihn).
+  // Als normale Funktion (kein useCallback), damit keine stale Deps entstehen.
+  const renderContentTile = (item: T) => {
+    const key = tileKey(item);
     const updateKey = getUpdateIdentifier(item);
     const updateAvailable = updateKey ? manager.contentUpdates[updateKey] ?? null : null;
     const noRiskStatus = isBlockedConfigLoaded
@@ -480,6 +507,40 @@ export function LocalContentTabV3<T extends LocalContentItem>({
           item.modrinth_info?.version_id || (item.curseforge_info as any)?.file_id,
         )
       : null;
+
+    const tileGroup = groupsEnabled ? modGroups.groupOf(item) : null;
+    const groupMenu = groupsEnabled ? (
+      <>
+        <ThemedDropdownDivider />
+        <ThemedDropdownHeader>{t("mod_groups.move_to")}</ThemedDropdownHeader>
+        {modGroups.groups
+          .filter(g => g.id !== tileGroup?.id)
+          .map(g => (
+            <ThemedDropdownItem
+              key={g.id}
+              icon="solar:folder-linear"
+              onClick={() => { modGroups.assign(item, g.id); setHoverMenuId(null); }}
+            >
+              {g.name}
+            </ThemedDropdownItem>
+          ))}
+        <ThemedDropdownItem
+          icon="solar:add-folder-bold"
+          onClick={() => { setPendingAssignItem(item); setGroupDialog({ mode: "create" }); setHoverMenuId(null); }}
+        >
+          {t("mod_groups.new_group")}
+        </ThemedDropdownItem>
+        {tileGroup && (
+          <ThemedDropdownItem
+            icon="solar:close-circle-linear"
+            onClick={() => { modGroups.assign(item, null); setHoverMenuId(null); }}
+          >
+            {t("mod_groups.remove_from_group")}
+          </ThemedDropdownItem>
+        )}
+      </>
+    ) : undefined;
+
     return (
       <ContentTile
         key={key}
@@ -534,9 +595,104 @@ export function LocalContentTabV3<T extends LocalContentItem>({
         onSwitchVersion={(v) => handleSwitchVersion(item, v)}
         updateAvailable={updateAvailable}
         isSwitchingVersion={switchingVersionFor === item.filename}
+        groupBadge={tileGroup?.name ?? null}
+        groupMenu={groupMenu}
       />
     );
   };
+
+  const fabActions: FABActionConfig[] = [
+    { icon: "solar:play-bold",  label: t("profiles.v3.fab.enable"),  onClick: handleBatchEnable,  disabled: batchBusy },
+    { icon: "solar:pause-bold", label: t("profiles.v3.fab.disable"), onClick: handleBatchDisable, disabled: batchBusy },
+    ...(batchUpdateChecksConfig ? [{
+      icon: batchUpdateChecksConfig.shouldEnable ? "solar:volume-loud-bold" : "solar:volume-cross-bold",
+      label: t(batchUpdateChecksConfig.shouldEnable ? "profiles.v3.fab.resumeChecks" : "profiles.v3.fab.muteChecks"),
+      onClick: handleBatchToggleUpdateChecks,
+    } as FABActionConfig] : []),
+    {
+      icon: "solar:trash-bin-trash-bold",
+      label: manager.isBatchDeleting ? "…" : t("profiles.v3.fab.delete"),
+      tone: "danger",
+      onClick: manager.handleBatchDeleteSelected,
+      disabled: manager.isBatchDeleting || sync.selection.size > 0,
+    },
+  ];
+
+  const toolbarActions: ContentActionButton[] = [
+    ...(manager.updatableContentCount > 0 ? [{
+      id: "update-all",
+      label: manager.isUpdatingAll
+        ? t("profiles.v3.toolbar.updateAll")
+        : `${t("profiles.v3.toolbar.updateAll")} (${manager.updatableContentCount})`,
+      icon: manager.isUpdatingAll || manager.isCheckingUpdates ? "solar:refresh-bold" : "solar:refresh-circle-bold",
+      variant: "highlight" as const,
+      disabled: manager.isUpdatingAll,
+      loading: manager.isUpdatingAll || manager.isCheckingUpdates,
+      tooltip: t("profiles.v3.toolbar.updateAllTitle", { count: manager.updatableContentCount }),
+      onClick: manager.handleUpdateAllAvailableContent,
+    }] : []),
+    {
+      id: "refresh",
+      icon: "solar:refresh-bold",
+      variant: "text" as const,
+      disabled: manager.isAnyTaskRunning,
+      loading: manager.isAnyTaskRunning,
+      tooltip: t("profiles.v3.toolbar.refresh"),
+      onClick: () => {
+        manager.fetchData(false);
+        void sync.reload();
+      },
+    },
+    ...(canBrowse ? [{
+      id: "add",
+      label: addContentButtonText,
+      icon: "solar:add-circle-bold",
+      variant: "highlight" as const,
+      tooltip: addContentButtonText,
+      onClick: handleAddClick,
+    }] : []),
+    ...(groupsEnabled ? [{
+      id: "new-group",
+      icon: "solar:add-folder-bold",
+      variant: "text" as const,
+      tooltip: t("mod_groups.new_group"),
+      onClick: () => setGroupDialog({ mode: "create" }),
+    },
+    {
+      id: "presets",
+      icon: "solar:share-bold",
+      variant: "text" as const,
+      tooltip: t("mod_presets.title"),
+      onClick: () => setPresetsOpen(true),
+    }] : []),
+  ];
+
+  const renderGridEntry = (gridEntry: GridEntry<T>) => {
+    if (gridEntry.kind === "sync") {
+      const entry = gridEntry.entry;
+      const { platform, project_id: projectId } = entry;
+      return (
+        <SyncModTile
+          entry={entry}
+          sync={sync}
+          mcVersion={profile.game_version}
+          selectMode={hasSelection}
+          versionPicker={syncVersionPicker(entry)}
+          menuOpen={hoverMenuId === syncModKey(entry)}
+          onMenuToggle={(open) => setHoverMenuId(open ? syncModKey(entry) : null)}
+          onNameClick={platform && projectId ? () => navigate(`/mods/${platform}/${projectId}`) : undefined}
+        />
+      );
+    }
+    return renderContentTile(gridEntry.item);
+  };
+  const insideItems = useMemo(
+    () => {
+      if (!currentFolder) return [] as T[];
+      return (visibleItems as T[]).filter((item) => modGroups.groupOf(item)?.id === currentFolder.id);
+    },
+    [currentFolder, visibleItems, modGroups],
+  );
 
   return (
     <div className="flex flex-col min-h-0 flex-1 relative">
@@ -605,7 +761,40 @@ export function LocalContentTabV3<T extends LocalContentItem>({
           ) : (
             <div className="h-40" />
           )
-        ) : gridEntries.length === 0 ? (
+        ) : currentFolder ? (
+          <div className="flex flex-col gap-3">
+            {/* Zurück-Pfeil + Pfad */}
+            <button
+              onClick={() => setCurrentFolderId(null)}
+              className="flex items-center gap-2 self-start rounded-md px-2 py-1.5 text-white/60 hover:text-white hover:bg-white/5 transition-colors"
+              title={t("mod_groups.back")}
+            >
+              <Icon icon="solar:alt-arrow-left-bold" className="w-4 h-4" />
+              <span className="font-minecraft text-sm">
+                {itemTypeNamePlural} <span className="text-white/30">/</span> {currentFolder.name}
+              </span>
+              <span className="font-minecraft text-xs text-white/35 tabular-nums">
+                ({insideItems.length})
+              </span>
+            </button>
+            {insideItems.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {insideItems.map((item) => renderContentTile(item))}
+              </div>
+            ) : (
+              <div className="px-2 py-3 rounded-lg border border-dashed border-white/10 text-xs font-minecraft text-white/30">
+                {t("mod_groups.empty_group")}
+              </div>
+            )}
+            <button
+              onClick={() => handleAddToGroup(currentFolder.id)}
+              className="flex items-center justify-center gap-2 h-10 rounded-lg border border-dashed border-white/15 text-white/50 hover:text-white hover:border-white/30 hover:bg-white/5 transition-colors text-xs font-minecraft uppercase tracking-wider"
+            >
+              <Icon icon="solar:add-circle-bold" className="w-4 h-4" />
+              {t("mod_groups.add_mods")}
+            </button>
+          </div>
+        ) : gridEntries.length === 0 && !(isBrowsing && modGroups.groups.length > 0) ? (
           <EmptyStateV3
             icon={emptyStateIconOverride ?? "solar:widget-bold-duotone"}
             title={manager.searchQuery
@@ -616,43 +805,73 @@ export function LocalContentTabV3<T extends LocalContentItem>({
               : undefined}
           />
         ) : (
-          grouped ? (
-            <div className="space-y-4">
-              {entryGroups.map((group) => {
-                const isCollapsed = collapsedGroups.has(group.id);
-                return (
-                  <div key={group.id}>
-                    <ContentGroupDivider
-                      label={group.label}
-                      count={group.entries.length}
-                      packId={group.packId}
-                      packIcon={group.packIcon}
-                      collapsed={isCollapsed}
-                      onToggle={() => toggleGroup(group.id)}
-                      onOpen={group.packId ? () => sync.openPack(group.packId!) : undefined}
-                      openLabel={t("profiles.v3.groups.openPack")}
-                      tag={group.packId ? t("profiles.v3.groups.syncPackTag") : undefined}
+          <div className="space-y-4">
+            {isBrowsing && modGroups.groups.length > 0 && (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {[...modGroups.groups]
+                  .sort((left, right) => left.name.localeCompare(right.name))
+                  .map((group) => (
+                    <FolderTile
+                      key={group.id}
+                      group={group}
+                      members={(visibleItems as T[]).filter(
+                        (item) => modGroups.groupOf(item)?.id === group.id,
+                      )}
+                      onOpen={() => setCurrentFolderId(group.id)}
+                      onToggleItem={(item) => manager.handleToggleItemEnabled(item)}
+                      manageOpen={openManageGroupId === group.id}
+                      onManageToggle={() =>
+                        setOpenManageGroupId((current) => (current === group.id ? null : group.id))
+                      }
+                      onRename={() => {
+                        setOpenManageGroupId(null);
+                        setGroupDialog({ mode: "rename", groupId: group.id });
+                      }}
+                      onDelete={() => handleDeleteGroup(group.id)}
                     />
-                    {!isCollapsed && (
-                      <div className="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-3">
-                        {group.entries.map((gridEntry) => (
-                          <div key={gridEntryKey(gridEntry)}>{renderGridEntry(gridEntry)}</div>
-                        ))}
+                  ))}
+              </div>
+            )}
+            {gridEntries.length > 0 && (
+              grouped ? (
+                <div className="space-y-4">
+                  {entryGroups.map((group) => {
+                    const isCollapsed = collapsedGroups.has(group.id);
+                    return (
+                      <div key={group.id}>
+                        <ContentGroupDivider
+                          label={group.label}
+                          count={group.entries.length}
+                          packId={group.packId}
+                          packIcon={group.packIcon}
+                          collapsed={isCollapsed}
+                          onToggle={() => toggleGroup(group.id)}
+                          onOpen={group.packId ? () => sync.openPack(group.packId!) : undefined}
+                          openLabel={t("profiles.v3.groups.openPack")}
+                          tag={group.packId ? t("profiles.v3.groups.syncPackTag") : undefined}
+                        />
+                        {!isCollapsed && (
+                          <div className="mt-2 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                            {group.entries.map((gridEntry) => (
+                              <div key={gridEntryKey(gridEntry)}>{renderGridEntry(gridEntry)}</div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-          <VirtuosoGrid
-            data={gridEntries}
-            customScrollParent={scrollParent ?? undefined}
-            listClassName="grid grid-cols-1 lg:grid-cols-2 gap-3"
-            computeItemKey={(index, gridEntry) => `${index}:${gridEntryKey(gridEntry)}`}
-            itemContent={(_, gridEntry) => renderGridEntry(gridEntry)}
-          />
-          )
+                    );
+                  })}
+                </div>
+              ) : (
+                <VirtuosoGrid
+                  data={gridEntries}
+                  customScrollParent={scrollParent ?? undefined}
+                  listClassName="grid grid-cols-1 gap-3 lg:grid-cols-2"
+                  computeItemKey={(index, gridEntry) => `${index}:${gridEntryKey(gridEntry)}`}
+                  itemContent={(_, gridEntry) => renderGridEntry(gridEntry)}
+                />
+              )
+            )}
+          </div>
         )}
       </div>
 
@@ -697,6 +916,160 @@ export function LocalContentTabV3<T extends LocalContentItem>({
             : t("content.delete_selected_title", { itemType: itemTypeNamePlural })
         }
       />
+      <ModGroupDialog
+        open={!!groupDialog}
+        title={t(groupDialog?.mode === "rename" ? "mod_groups.rename_title" : "mod_groups.create_title")}
+        confirmLabel={t(groupDialog?.mode === "rename" ? "profiles.v3.chips.save" : "mod_groups.create")}
+        initialName={
+          groupDialog?.mode === "rename"
+            ? modGroups.groups.find(g => g.id === groupDialog.groupId)?.name ?? ""
+            : ""
+        }
+        onClose={() => { setGroupDialog(null); setPendingAssignItem(null); }}
+        onConfirm={handleGroupDialogConfirm}
+      />
+      {groupsEnabled && (
+        <ModPresetsDialog
+          open={presetsOpen}
+          profile={profile}
+          items={manager.items}
+          onClose={() => setPresetsOpen(false)}
+          onImported={() => manager.fetchData(true)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Folder tile (looks like a mod, opens like the Explorer) ───────────
+// Ordner-Kachel in Mod-Größe: Klick geht hinein (Parent blendet dann nur
+// dessen Mods ein), Schalter (de)aktiviert alle Mods im Ordner auf einmal.
+function FolderTile<T extends LocalContentItem>({
+  group,
+  members,
+  onOpen,
+  onToggleItem,
+  manageOpen,
+  onManageToggle,
+  onRename,
+  onDelete,
+}: {
+  group: ModGroup;
+  members: T[];
+  onOpen: () => void;
+  onToggleItem: (item: T) => Promise<void> | void;
+  manageOpen: boolean;
+  onManageToggle: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+
+  const toggleGroup = async () => {
+    if (busy || members.length === 0) return;
+    setBusy(true);
+    try {
+      const anyDisabled = members.some(m => m.is_disabled);
+      for (const m of members) {
+        if (anyDisabled && m.is_disabled) await onToggleItem(m);
+        else if (!anyDisabled && !m.is_disabled) await onToggleItem(m);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const enabledCount = members.filter(m => !m.is_disabled).length;
+  const allEnabled = members.length > 0 && enabledCount === members.length;
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 overflow-hidden">
+      <div className="flex items-center gap-4 p-3">
+        <button
+          onClick={onOpen}
+          className="relative w-14 h-14 flex-shrink-0 rounded-lg bg-white/5 ring-1 ring-white/10 flex items-center justify-center overflow-hidden hover:bg-white/10 transition-colors"
+          title={t("mod_groups.open")}
+        >
+          {busy ? (
+            <Icon icon="svg-spinners:ring-resize" className="w-6 h-6 text-white/50" />
+          ) : (
+            <Icon icon="solar:folder-bold" className="w-7 h-7 text-white/60" />
+          )}
+          {members.length > 0 && (
+            <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/70 text-[10px] font-minecraft text-white/80 tabular-nums">
+              {members.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={onOpen}
+          className="flex-1 min-w-0 text-left"
+          title={t("mod_groups.open")}
+        >
+          <div className="text-sm text-white font-minecraft truncate normal-case" title={group.name}>
+            {group.name}
+          </div>
+          <div className="text-xs font-minecraft text-white/40 mt-0.5">
+            {t("mod_groups.mods_count", { count: members.length })}
+            {members.length > 0 && ` · ${enabledCount}/${members.length} ${t("mod_groups.active")}`}
+          </div>
+        </button>
+
+        {/* An/Aus: schaltet alle Mods im Ordner */}
+        <div
+          className="flex-shrink-0"
+          title={t(allEnabled ? "mod_groups.disable_all" : "mod_groups.enable_all")}
+        >
+          <ToggleSwitch
+            checked={allEnabled}
+            onChange={() => void toggleGroup()}
+            disabled={busy || members.length === 0}
+            size="sm"
+          />
+        </div>
+
+        {/* Hinein-Pfeil */}
+        <button
+          onClick={onOpen}
+          className="flex-shrink-0 p-1.5 rounded text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+          title={t("mod_groups.open")}
+        >
+          <Icon icon="solar:alt-arrow-right-bold" className="w-4 h-4" />
+        </button>
+
+        {/* Verwalten */}
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onManageToggle(); }}
+            className="p-1.5 rounded text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+            title={t("mod_groups.manage")}
+          >
+            <Icon icon="solar:menu-dots-bold" className="w-4 h-4" />
+          </button>
+          <ThemedDropdown
+            open={manageOpen}
+            onClose={onManageToggle}
+            width="w-48"
+          >
+            <ThemedDropdownItem
+              icon="solar:pen-bold"
+              onClick={onRename}
+            >
+              {t("mod_groups.rename")}
+            </ThemedDropdownItem>
+            <ThemedDropdownDivider />
+            <ThemedDropdownItem
+              icon="solar:trash-bin-trash-linear"
+              tone="danger"
+              onClick={onDelete}
+            >
+              {t("mod_groups.delete")}
+            </ThemedDropdownItem>
+          </ThemedDropdown>
+        </div>
+      </div>
     </div>
   );
 }

@@ -19,6 +19,8 @@ import { invalidateAnalyticsCache } from "../../../services/analytics-service";
 import { LANGUAGE_OPTIONS, type SupportedLanguage } from "../../../i18n";
 import { useSettingsConfig, useSettingsKeywords } from "./settings-context";
 import { isWindows } from "../../../utils/platform";
+import { LAUNCHER_MODS } from "../../../constants/launcher-mods";
+import { useLauncherModStore } from "../../../store/launcher-mod-store";
 
 export function GeneralTab() {
   const { t } = useTranslation();
@@ -27,6 +29,8 @@ export function GeneralTab() {
   const { language, setLanguage, accentColor, borderRadius, setBorderRadius, setAnalyticsConsent } =
     useThemeStore();
   const { showModal, hideModal } = useGlobalModal();
+  const launcherModEnabled = useLauncherModStore((state) => state.enabled);
+  const setLauncherModEnabled = useLauncherModStore((state) => state.setEnabled);
   const { isThemeActive } = useLauncherTheme();
   const isAccentColorDisabled = isThemeActive;
 
@@ -258,6 +262,29 @@ export function GeneralTab() {
             size="md"
           />
         </SettingRow>
+      </SettingsSection>
+
+      <SettingsSection
+        id="settings-section-launcher-mods"
+        title={t("launcher_mods.title")}
+        icon="solar:widget-5-bold"
+        keywords={kw("launcher_mods.title", "launcher mods", "quick join", "skins", "skindex")}
+        description={t("launcher_mods.description")}
+      >
+        {LAUNCHER_MODS.map((mod) => (
+          <SettingRow
+            key={mod.id}
+            label={t(mod.nameKey)}
+            description={t(mod.descriptionKey)}
+            searchKeywords={kw(mod.nameKey, "launcher mod", "enable", "disable")}
+          >
+            <ToggleSwitch
+              checked={launcherModEnabled[mod.id]}
+              onChange={(enabled) => setLauncherModEnabled(mod.id, enabled)}
+              size="md"
+            />
+          </SettingRow>
+        ))}
       </SettingsSection>
 
       <SettingsSection id="settings-section-interface" title={t("settings.sections.interface")} icon="solar:slider-horizontal-bold" keywords={kw("settings.sections.interface", "downloads", "interface", "oberfläche", "performance")}>

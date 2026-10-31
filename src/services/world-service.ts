@@ -101,4 +101,4 @@ export const getDifficultyString = (difficulty: number | null | undefined): stri
     case 3: return 'Hard';
     default: return `Unknown (${difficulty})`;
   }
-}; 
+};

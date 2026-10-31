@@ -461,25 +461,18 @@ pub async fn reset_mobile_app_token() -> Result<String, CommandError> {
 pub async fn check_update_available_command(app: AppHandle) -> Result<Option<crate::utils::updater_utils::UpdateInfo>, CommandError> {
     debug!("Executing check_update_available_command");
 
+    // Flatpak installations are updated by the package manager, so don't send
+    // users to download a standalone installer from inside the application.
+    if updater_utils::is_flatpak() {
+        return Ok(None);
+    }
+
     let state = State::get().await?;
     let config = state.config_manager.get_config().await;
     let is_beta_channel = config.check_beta_channel;
 
     debug!("Using beta channel setting from config: {}", is_beta_channel);
     Ok(updater_utils::check_update_available(&app, is_beta_channel).await?)
-}
-
-#[tauri::command]
-pub async fn download_and_install_update_command(app: AppHandle) -> Result<(), CommandError> {
-    debug!("Executing download_and_install_update_command");
-
-    let state = State::get().await?;
-    let config = state.config_manager.get_config().await;
-    let is_beta_channel = config.check_beta_channel;
-
-    debug!("Using beta channel setting from config: {}", is_beta_channel);
-    updater_utils::download_and_install_update(&app, is_beta_channel).await?;
-    Ok(())
 }
 
 #[tauri::command]

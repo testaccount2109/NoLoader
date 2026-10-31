@@ -4,7 +4,7 @@ import { Icon } from "@iconify/react";
 import { cn } from "../../lib/utils";
 import { useThemeStore } from "../../store/useThemeStore";
 import { useMinecraftAuthStore } from "../../store/minecraft-auth-store";
-import { useRef, useState } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { PlayerHead } from "../common/PlayerHead";
 import { useEntranceAnimation } from "../../hooks/useEntranceAnimation";
@@ -99,14 +99,13 @@ export function CurrentAccountDisplay({
           "flex items-center gap-3 px-4 py-1",
           "text-shadow-sm",
           getBorderClasses(),
-          variant !== "flat" &&
-            "shadow-[0_8px_0_rgba(0,0,0,0.3),0_10px_15px_rgba(0,0,0,0.35)]",
+          variant !== "flat" && "shadow-[var(--account-button-shadow)]",
           "cursor-pointer",
           getHoverTransform(),
-          variant !== "flat" && `hover:shadow-[${getHoverBoxShadow()}]`,
+          variant !== "flat" && "hover:shadow-[var(--account-button-hover-shadow)]",
           "hover:brightness-110",
           getActiveTransform(),
-          variant !== "flat" && `active:shadow-[${getActiveBoxShadow()}]`,
+          variant !== "flat" && "active:shadow-[var(--account-button-active-shadow)]",
           "active:brightness-90",
           className,
         )}
@@ -114,12 +113,14 @@ export function CurrentAccountDisplay({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         style={{
+          "--account-button-shadow": getBoxShadow(),
+          "--account-button-hover-shadow": getHoverBoxShadow(),
+          "--account-button-active-shadow": getActiveBoxShadow(),
           backgroundColor: `${accentColor.value}30`,
           borderColor: `${accentColor.value}80`,
           borderBottomColor: getBorderBottomColor(),
-          boxShadow: getBoxShadow(),
           filter: isHovered ? "brightness(1.1)" : "brightness(1)",
-        }}
+        } as CSSProperties}
       >
         {variant !== "flat" && (
           <span
@@ -170,14 +171,13 @@ export function CurrentAccountDisplay({
         "flex items-center gap-3 px-4 py-1",
         "text-shadow-sm",
         getBorderClasses(),
-        variant !== "flat" &&
-          "shadow-[0_8px_0_rgba(0,0,0,0.3),0_10px_15px_rgba(0,0,0,0.35)]",
+        variant !== "flat" && "shadow-[var(--account-button-shadow)]",
         "cursor-pointer",
         getHoverTransform(),
-        variant !== "flat" && `hover:shadow-[${getHoverBoxShadow()}]`,
+        variant !== "flat" && "hover:shadow-[var(--account-button-hover-shadow)]",
         "hover:brightness-110",
         getActiveTransform(),
-        variant !== "flat" && `active:shadow-[${getActiveBoxShadow()}]`,
+        variant !== "flat" && "active:shadow-[var(--account-button-active-shadow)]",
         "active:brightness-90",
         className,
       )}
@@ -185,12 +185,14 @@ export function CurrentAccountDisplay({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{
+        "--account-button-shadow": getBoxShadow(),
+        "--account-button-hover-shadow": getHoverBoxShadow(),
+        "--account-button-active-shadow": getActiveBoxShadow(),
         backgroundColor: `${accentColor.value}30`,
         borderColor: `${accentColor.value}80`,
         borderBottomColor: getBorderBottomColor(),
-        boxShadow: getBoxShadow(),
         filter: isHovered ? "brightness(1.1)" : "brightness(1)",
-      }}
+      } as CSSProperties}
     >
       {variant !== "flat" && (
         <span

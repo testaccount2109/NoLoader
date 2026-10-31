@@ -1,10 +1,11 @@
 use crate::config::HTTP_CONNECT_TIMEOUT;
 use crate::error::{AppError, Result as AppResult};
 use log::{debug, error, info, trace, warn};
-use serde::Serialize;
+use semver::Version;
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::Instant;
-use tauri::{AppHandle, Emitter, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_updater::UpdaterExt;
 use tokio::time::{sleep, Duration};
 
@@ -79,7 +80,8 @@ pub async fn check_update_available_detailed(
 
     trace!(
         "Checking for available updates (detailed) (Current: {}). Channel: {}",
-        current_version, channel
+        current_version,
+        channel
     );
 
     // Determine the base part of the URL and the platform-specific segment template
@@ -114,10 +116,15 @@ pub async fn check_update_available_detailed(
 
     trace!("Using update endpoint template: {}", update_url_str);
 
-    let update_url = update_url_str.parse()
-        .map_err(|e| AppError::Other(format!("Failed to parse update URL '{}': {}", update_url_str, e)))?;
+    let update_url = update_url_str.parse().map_err(|e| {
+        AppError::Other(format!(
+            "Failed to parse update URL '{}': {}",
+            update_url_str, e
+        ))
+    })?;
 
-    let updater_builder = app_handle.updater_builder()
+    let updater_builder = app_handle
+        .updater_builder()
         .configure_client(|c| c.connect_timeout(HTTP_CONNECT_TIMEOUT))
         .endpoints(vec![update_url])
         .map_err(|e| AppError::Other(format!("Failed to set updater endpoints: {}", e)))?;
@@ -148,10 +155,7 @@ pub async fn check_update_available_detailed(
 
             info!(
                 "Update check: {} available (current {}, {} channel, released {:?})",
-                update.version,
-                current_version,
-                channel,
-                update.date
+                update.version, current_version, channel, update.date
             );
             remember_update_check(is_beta_channel, Some(update_info.clone()));
 
@@ -200,11 +204,99 @@ pub async fn check_update_available(
         debug!("Update check: serving cached result");
         return Ok(cached);
     }
-    // Use the detailed version but only return the UpdateInfo part
-    match check_update_available_detailed(app_handle, is_beta_channel).await? {
-        Some(result) => Ok(Some(result.update_info)),
-        None => Ok(None),
+    const STABLE_RELEASE_URL: &str =
+        "https://api.github.com/repos/NoRiskClient/noriskclient-launcher/releases/latest";
+    const RELEASES_URL: &str =
+        "https://api.github.com/repos/NoRiskClient/noriskclient-launcher/releases";
+
+    #[derive(Debug, Deserialize)]
+    struct GitHubRelease {
+        tag_name: String,
+        body: Option<String>,
+        published_at: Option<String>,
+        html_url: String,
+        draft: bool,
+        prerelease: bool,
     }
+
+    let current_version = Version::parse(&app_handle.package_info().version.to_string())
+        .map_err(|error| AppError::Other(format!("Invalid installed launcher version: {error}")))?;
+    let client = reqwest::Client::builder()
+        .user_agent(format!(
+            "NoRiskClientLauncher/{} (+https://norisk.gg)",
+            current_version
+        ))
+        .timeout(UPDATE_CHECK_TIMEOUT)
+        .build()
+        .map_err(|error| AppError::Other(format!("Could not prepare release check: {error}")))?;
+
+    let release =
+        if is_beta_channel {
+            let response = client
+                .get(RELEASES_URL)
+                .header("Accept", "application/vnd.github+json")
+                .query(&[("per_page", "30")])
+                .send()
+                .await
+                .map_err(|error| AppError::Other(format!("Release check failed: {error}")))?;
+            if !response.status().is_success() {
+                return Err(AppError::Other(format!(
+                    "GitHub release check returned HTTP {}",
+                    response.status()
+                )));
+            }
+            response
+                .json::<Vec<GitHubRelease>>()
+                .await
+                .map_err(|error| AppError::Other(format!("Could not read release list: {error}")))?
+                .into_iter()
+                .find(|release| !release.draft && release.prerelease)
+        } else {
+            let response = client
+                .get(STABLE_RELEASE_URL)
+                .header("Accept", "application/vnd.github+json")
+                .send()
+                .await
+                .map_err(|error| AppError::Other(format!("Release check failed: {error}")))?;
+            if !response.status().is_success() {
+                return Err(AppError::Other(format!(
+                    "GitHub release check returned HTTP {}",
+                    response.status()
+                )));
+            }
+            Some(response.json::<GitHubRelease>().await.map_err(|error| {
+                AppError::Other(format!("Could not read latest release: {error}"))
+            })?)
+        };
+
+    let Some(release) = release else {
+        remember_update_check(is_beta_channel, None);
+        return Ok(None);
+    };
+    let release_version_string = release
+        .tag_name
+        .strip_prefix('v')
+        .unwrap_or(&release.tag_name);
+    let release_version = Version::parse(release_version_string).map_err(|error| {
+        AppError::Other(format!(
+            "Invalid version in GitHub release tag '{}': {error}",
+            release.tag_name
+        ))
+    })?;
+
+    if release_version <= current_version {
+        remember_update_check(is_beta_channel, None);
+        return Ok(None);
+    }
+
+    let update_info = UpdateInfo {
+        version: release_version_string.to_string(),
+        date: release.published_at,
+        body: release.body,
+        download_url: Some(release.html_url),
+    };
+    remember_update_check(is_beta_channel, Some(update_info.clone()));
+    Ok(Some(update_info))
 }
 
 // Define the payload structure for updater status events
@@ -302,7 +394,10 @@ pub async fn download_and_install_update(
     // Check for available updates with detailed information
     match check_update_available_detailed(app_handle, is_beta_channel).await? {
         Some(update_check_result) => {
-            info!("Update available: {}. Proceeding with download...", update_check_result.update_info.version);
+            info!(
+                "Update available: {}. Proceeding with download...",
+                update_check_result.update_info.version
+            );
 
             // Use the update object directly from the check result
             handle_update(update_check_result.update, app_handle.clone()).await
@@ -630,6 +725,7 @@ pub async fn check_for_updates(
     emit_status(&app_handle, "close", final_message.clone(), None);
     trace!(
         "Update check process fully completed (Status: {}). Final Message: {}",
-        final_status, final_message
+        final_status,
+        final_message
     );
 }

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { cn } from '../../lib/utils';
 import { MainLaunchButton } from './MainLaunchButton';
+import { QuickServerJoin } from './QuickServerJoin';
 import { PlayerRig } from './PlayerRig';
 import { useThemeStore } from '../../store/useThemeStore';
 import { Icon } from '@iconify/react';
@@ -15,6 +16,7 @@ import { StaticTooltip } from '../ui/Tooltip';
 import { toast } from 'sonner';
 import { isWorldCupEventActive } from '../../data/worldcup-event';
 import type { LaunchOverrides } from '../../services/process-service';
+import { useLauncherModStore } from '../../store/launcher-mod-store';
 
 // Featured server configuration
 // Option A: profileId = null → uses currently selected profile from MainLaunchButton
@@ -82,6 +84,9 @@ export function PlayerActionsDisplay({
   const accentColor = useThemeStore((state) => state.accentColor);
   const featureMode = useThemeStore((state) => state.featureMode);
   const setFeatureMode = useThemeStore((state) => state.setFeatureMode);
+  const quickServerJoinEnabled = useLauncherModStore(
+    (state) => state.enabled["quick-server-join"],
+  );
   const navigate = useNavigate();
 
   const isLoadingProfiles = launchButtonVersions.length === 0;
@@ -207,6 +212,12 @@ export function PlayerActionsDisplay({
                     maxWidth="400px"
                     mainButtonHeight="h-20"
                   />
+                  {quickServerJoinEnabled && (
+                    <QuickServerJoin
+                      profileId={featuredServerProfileId}
+                      className="mt-2 w-80"
+                    />
+                  )}
                 </div>
               )}
             </div>

@@ -23,7 +23,7 @@ jobs:
       - name: install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm
 
       - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -120,7 +120,7 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm
 
       - name: setup node
         uses: actions/setup-node@v4
@@ -252,20 +252,14 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Wird evtl. intern von Tauri benötigt
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           RUSTFLAGS: ${{ matrix.platform == 'ubuntu-22.04' && '-C link-arg=-Wl,--no-as-needed -C link-arg=-layatana-appindicator3 -C link-arg=-Wl,--as-needed' || '' }}
         with:
           # Revert to using packageManager and args
           args: --verbose ${{ matrix.target != '' && format('--target {0}', matrix.target) || '' }} # Füge --target hinzu, wenn es gesetzt ist
           packageManager: yarn # Set packageManager to yarn
       
-      - name: Fix AppImage (Remove Wayland libs & Resign)
+      - name: Fix AppImage (Remove Wayland libs)
         if: matrix.platform == 'ubuntu-22.04'
-        env:
-          # Pass the secrets directly to the environment
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: |
           echo "--- Fix AppImage Started ---"
           
@@ -286,12 +280,8 @@ jobs:
           export ARCH=x86_64
           ./appimagetool-x86_64.AppImage squashfs-root/ "$APPIMAGE"
           
-          echo "Re-signing..."
-          
           cd - > /dev/null
-          
-          yarn tauri signer sign "$BUNDLE_DIR/$APPIMAGE"
-          
+
           cd "$BUNDLE_DIR"
           rm -rf squashfs-root appimagetool-x86_64.AppImage
           
@@ -324,7 +314,7 @@ jobs:
         id: find_exe
         run: |
           $NsisDir = "${{ github.workspace }}\src-tauri\target\release\bundle\nsis"
-          $ExeFile = Get-ChildItem -Path $NsisDir -Filter "*.exe" | Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+          $ExeFile = Get-ChildItem -Path $NsisDir -Filter "*.exe" | Select-Object -First 1
           echo "EXE_PATH=$($ExeFile.FullName)" >> $env:GITHUB_OUTPUT
           echo "NSIS_DIR=$NsisDir" >> $env:GITHUB_OUTPUT
           echo "Found EXE: $($ExeFile.FullName)"
@@ -350,19 +340,6 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      # tauri-action generated the .exe.sig before code signing changed the binary,
-      # so the updater signature no longer matches and has to be regenerated.
-      - name: Re-sign Windows EXE for Tauri Updater
-        if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        run: |
-          echo "Re-signing EXE for Tauri updater after code signing..."
-          yarn tauri signer sign "${{ steps.find_exe.outputs.EXE_PATH }}"
-          echo "Re-signing complete."
-        shell: bash
-
       - name: Verify the Windows signature
         if: matrix.platform == 'windows-latest' && startsWith(github.ref, 'refs/tags/')
         shell: pwsh
@@ -384,22 +361,21 @@ jobs:
           APP_BASE_NAME="NoRisk Launcher" # Dein productName
           APPIMAGE_DIR=${{ matrix.output_path }}/appimage
           DEB_DIR=${{ matrix.output_path }}/deb
+          RPM_DIR=${{ matrix.output_path }}/rpm
           
-          echo "Listing content of $APPIMAGE_DIR and $DEB_DIR"
+          echo "Listing content of $APPIMAGE_DIR, $DEB_DIR and $RPM_DIR"
           ls -R "$APPIMAGE_DIR" || true
           ls -R "$DEB_DIR" || true
+          ls -R "$RPM_DIR" || true
           
           # Verschiebe und benenne AppImage um (verwende einfachen Wildcard)
           mv "$APPIMAGE_DIR"/*.AppImage "$APPIMAGE_DIR"/${{ matrix.asset_name_base }}.AppImage
           
-          # Verschiebe und benenne AppImage Signatur um (verwende einfachen Wildcard)
-          mv "$APPIMAGE_DIR"/*.AppImage.sig "$APPIMAGE_DIR"/${{ matrix.asset_name_base }}.AppImage.sig
-          
           # Verschiebe und benenne Deb Paket um
           mv "$DEB_DIR"/*.deb "$APPIMAGE_DIR"/${{ matrix.asset_name_base }}.deb
-          
-          # Verschiebe und benenne Deb Signatur um
-          mv "$DEB_DIR"/*.deb.sig "$APPIMAGE_DIR"/${{ matrix.asset_name_base }}.deb.sig
+
+          # Rename the Fedora/RHEL package.
+          mv "$RPM_DIR"/*.rpm "$RPM_DIR"/${{ matrix.asset_name_base }}.rpm
           
           echo "Final content of $APPIMAGE_DIR after moves"
           ls -R "$APPIMAGE_DIR" || true
@@ -421,14 +397,11 @@ jobs:
           $ARTIFACT_DIR = "${{ matrix.output_path }}\nsis"
           echo "Listing content of $ARTIFACT_DIR"
           Get-ChildItem -Path $ARTIFACT_DIR -Recurse
-          # Finde die Originalnamen (angenommen nur eine .exe und eine .exe.sig)
+          # Finde die Windows Installer-Datei.
           $ExeFile = Get-ChildItem -Path $ARTIFACT_DIR -Filter *.exe
-          $SigFile = Get-ChildItem -Path $ARTIFACT_DIR -Filter *.exe.sig
 
           # Benenne .exe um
           Move-Item -Path $ExeFile.FullName -Destination "$ARTIFACT_DIR\${{ matrix.asset_name_base }}.exe"
-          # Benenne .exe.sig um
-          Move-Item -Path $SigFile.FullName -Destination "$ARTIFACT_DIR\${{ matrix.asset_name_base }}.exe.sig"
 
           echo "Final content of $ARTIFACT_DIR after move"
           Get-ChildItem -Path $ARTIFACT_DIR -Recurse
@@ -447,7 +420,6 @@ jobs:
           ls -R "${{ matrix.output_path }}" || true 
           echo "-----------------------------------"
           
-          APP_BASE_NAME="NoRisk Launcher" # Dein productName
           ARTIFACT_DIR_DMG=${{ matrix.output_path }}/dmg
           ARTIFACT_DIR_APP=${{ matrix.output_path }}/macos
           RENAMED_DIR="$ARTIFACT_DIR_APP/renamed"
@@ -459,12 +431,6 @@ jobs:
           
           # Verschiebe DMG (Wildcard sollte ok sein)
           mv "$ARTIFACT_DIR_DMG"/*.dmg "$RENAMED_DIR"/${{ matrix.asset_name_base }}.dmg
-          
-          # Verschiebe App Tarball (expliziter Name)
-          mv "$ARTIFACT_DIR_APP/${APP_BASE_NAME}.app.tar.gz" "$RENAMED_DIR"/${{ matrix.asset_name_base }}.app.tar.gz
-          
-          # Verschiebe App Tarball Signatur (expliziter Name, ignoriere Fehler)
-          mv "$ARTIFACT_DIR_APP/${APP_BASE_NAME}.app.tar.gz.sig" "$RENAMED_DIR"/${{ matrix.asset_name_base }}.app.tar.gz.sig
           
           echo "Final content of $RENAMED_DIR after move"
           ls -R "$RENAMED_DIR" || true
@@ -481,7 +447,12 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         with:
           name: artifact-${{ matrix.platform }}
-          path: ${{ matrix.output_path }}/appimage/${{ matrix.asset_name_base }}.*
+          path: |
+            ${{ matrix.output_path }}/appimage/${{ matrix.asset_name_base }}.*
+            !${{ matrix.output_path }}/appimage/${{ matrix.asset_name_base }}.AppImage.sig
+            !${{ matrix.output_path }}/appimage/${{ matrix.asset_name_base }}.deb.sig
+            ${{ matrix.output_path }}/rpm/${{ matrix.asset_name_base }}.rpm
+            !${{ matrix.output_path }}/rpm/${{ matrix.asset_name_base }}.rpm.sig
           if-no-files-found: error
 
       - name: Upload Windows Artifact
@@ -492,6 +463,7 @@ jobs:
           path: |
             ${{ matrix.output_path }}\nsis\${{ matrix.asset_name_base }}.*
             ${{ startsWith(github.ref, 'refs/tags/') && format('{0}\nsis\{1}', matrix.output_path, env.CAPTURE_RUNTIME_ASSET) || '' }}
+            !${{ matrix.output_path }}\nsis\${{ matrix.asset_name_base }}.exe.sig
           if-no-files-found: error
           
       - name: Upload macOS Artifact
@@ -499,7 +471,10 @@ jobs:
         if: matrix.platform == 'macos-latest'
         with:
           name: artifact-${{ matrix.platform }}-${{ matrix.target }}
-          path: ${{ matrix.output_path }}/macos/renamed/${{ matrix.asset_name_base }}.*
+          path: |
+            ${{ matrix.output_path }}/macos/renamed/${{ matrix.asset_name_base }}.*
+            !${{ matrix.output_path }}/macos/renamed/${{ matrix.asset_name_base }}.app.tar.gz
+            !${{ matrix.output_path }}/macos/renamed/${{ matrix.asset_name_base }}.app.tar.gz.sig
           if-no-files-found: error
 
   # --- JOB 2: Create Release --- 
@@ -512,6 +487,23 @@ jobs:
     steps:
       - name: Checkout repository (needed for release notes maybe)
         uses: actions/checkout@v4 
+
+      - name: Load release changelog
+        id: release_notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          changelog="changelogs/${version}.md"
+          if [[ -f "$changelog" ]]; then
+            {
+              echo 'body<<CHANGELOG_EOF'
+              cat "$changelog"
+              echo
+              echo 'CHANGELOG_EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "body=Automated release for tag ${GITHUB_REF_NAME}. See the assets below." >> "$GITHUB_OUTPUT"
+          fi
         
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -529,9 +521,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }} # Verwendet den Tag, der den Workflow ausgelöst hat
           name: Release ${{ github.ref_name }} # Name des Releases
-          body: | # Optional: Release Notes
-            Automated release for tag ${{ github.ref_name }}
-            See assets below.
+          body: ${{ steps.release_notes.outputs.body }}
           draft: false
           # Setze auf true, wenn der Tag '-alpha', '-beta' oder '-rc' enthält
           prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}

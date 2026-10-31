@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { 
+import type {
     MinecraftProfile 
 } from "../types/minecraft"; // Relative path
 import type {
@@ -10,12 +10,32 @@ import type {
     ActiveSkin // Local source of truth for the active account's applied skin
 } from "../types/localSkin"; // Relative path
 
+export interface SkinCatalogEntry {
+    id: string;
+    name: string;
+    author: string | null;
+    previewUrl: string;
+    downloadUrl: string;
+    pageUrl: string;
+}
+
+export interface SkinCatalogPage {
+    skins: SkinCatalogEntry[];
+    page: number;
+    hasMore: boolean;
+}
+
 // Regex for basic Minecraft username validation (could also be a global constant)
 const MINECRAFT_USERNAME_REGEX = /^[a-zA-Z0-9_]{2,16}$/;
 // Regex to check for UUID format (either 32 hex chars without hyphens, or 36 chars with hyphens in 8-4-4-4-12 format)
 const UUID_REGEX = /^(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
 
 export class MinecraftSkinService {
+
+    /** Fetches a page of community skins from The Skindex via the Rust backend. */
+    static async browseSkindexSkins(query: string, page: number): Promise<SkinCatalogPage> {
+        return await invoke<SkinCatalogPage>("browse_skindex_skins", { query, page });
+    }
 
     /**
      * Fetches the skin profile data for the active account from Mojang.     * @returns A promise resolving to the MinecraftProfile containing skin data.
